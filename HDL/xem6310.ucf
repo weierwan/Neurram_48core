@@ -1,0 +1,211 @@
+############################################################################
+# XEM6310 - Xilinx constraints file
+#
+# Pin mappings for the XEM6310.  Use this as a template and comment out 
+# the pins that are not used in your design.  (By default, map will fail
+# if this file contains constraints for signals not in your design).
+#
+# Copyright (c) 2004-2010 Opal Kelly Incorporated
+# $Rev$ $Date$
+############################################################################
+CONFIG VCCAUX = "3.3"; //Required for Spartan-6
+
+NET "okUH[0]" TNM_NET = "okHostClk";
+TIMESPEC "TS_okHostClk" = PERIOD "okHostClk" 9.92 ns HIGH 50%;
+
+NET "okUHU[*]" TNM = "okHostINOUT_grp";
+TIMEGRP "okHostINOUT_grp" OFFSET = IN 2 ns VALID 4 ns BEFORE "okUH[0]" RISING;
+TIMEGRP "okHostINOUT_grp" OFFSET = OUT 8 ns AFTER "okUH[0]" RISING;
+
+NET "okHU[2]" TNM = "okHostOUT_grp";
+NET "okHU[1]" TNM = "okHostOUT_grp";
+NET "okHU[0]" TNM = "okHostOUT_grp";
+TIMEGRP "okHostOUT_grp" OFFSET = OUT 8 ns AFTER "okUH[0]" RISING;
+
+NET "okUH[4]"   TNM = "okHostIN_grp";
+NET "okUH[3]"   TNM = "okHostIN_grp";
+NET "okUH[2]"   TNM = "okHostIN_grp";
+NET "okUH[1]"   TNM = "okHostIN_grp";
+TIMEGRP "okHostIN_grp" OFFSET = IN 2 ns VALID 2 ns BEFORE "okUH[0]" RISING;
+
+############################################################################
+## System Clocks                                                        
+############################################################################
+NET "sys_clkp"      LOC=Y11      | IOSTANDARD=LVDS_25;
+NET "sys_clkn"      LOC=AB11     | IOSTANDARD=LVDS_25;
+
+NET "sys_clkp" TNM_NET = "okSysClk";
+TIMESPEC "TS_okSysClk" = PERIOD "okSysClk" 10 ns HIGH 50%;
+
+############################################################################
+## FrontPanel Host Interface
+############################################################################
+NET "okHU[0]"        LOC="AA8"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okHU[1]"        LOC="U10"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okHU[2]"        LOC="AB5"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+
+NET "okUH[0]"        LOC="Y12"    | IOSTANDARD="LVCMOS18";
+NET "okUH[1]"        LOC="AA4"    | IOSTANDARD="LVCMOS18";
+NET "okUH[2]"        LOC="AB3"    | IOSTANDARD="LVCMOS18";
+NET "okUH[3]"        LOC="Y6"     | IOSTANDARD="LVCMOS18";
+NET "okUH[4]"        LOC="AB21"   | IOSTANDARD="LVCMOS18";
+
+NET "okUHU<0>"       LOC="AB12"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<1>"       LOC="AA12"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<2>"       LOC="Y13"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<3>"       LOC="AB18"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<4>"       LOC="AA18"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<5>"       LOC="V15"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<6>"       LOC="AB2"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<7>"       LOC="AA2"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<8>"       LOC="Y7"     | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<9>"       LOC="Y4"     | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<10>"      LOC="W4"     | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<11>"      LOC="AB6"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<12>"      LOC="AA6"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<13>"      LOC="U13"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<14>"      LOC="U14"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<15>"      LOC="AA20"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<16>"      LOC="T16"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<17>"      LOC="AA10"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<18>"      LOC="U16"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<19>"      LOC="Y15"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<20>"      LOC="R15"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<21>"      LOC="U17"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<22>"      LOC="AA14"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<23>"      LOC="T15"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<24>"      LOC="T10"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<25>"      LOC="Y17"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<26>"      LOC="AA16"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<27>"      LOC="R16"    | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<28>"      LOC="V9"     | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<29>"      LOC="AB15"   | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<30>"      LOC="Y5"     | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+NET "okUHU<31>"      LOC="U8"     | IOSTANDARD="LVCMOS18" | SLEW="FAST";
+
+NET "okAA"           LOC="W11"    | IOSTANDARD="LVCMOS18";
+
+############################################################################
+## Peripherals
+############################################################################
+
+NET "addr_local<0>" LOC="G16" | IOSTANDARD=LVCMOS33; # JP2-15 
+NET "addr_local<1>" LOC="G19" | IOSTANDARD=LVCMOS33; # JP2-16 
+NET "addr_local<2>" LOC="G17" | IOSTANDARD=LVCMOS33; # JP2-17 
+NET "addr_local<3>" LOC="F20" | IOSTANDARD=LVCMOS33; # JP2-18 
+NET "addr_local<4>" LOC="H19" | IOSTANDARD=LVCMOS33; # JP2-19 
+NET "addr_local<5>" LOC="H20" | IOSTANDARD=LVCMOS33; # JP2-20 
+NET "addr_local<6>" LOC="H18" | IOSTANDARD=LVCMOS33; # JP2-21 
+NET "addr_local<7>" LOC="J19" | IOSTANDARD=LVCMOS33; # JP2-22 
+NET "clear_horz_b" LOC="F16" | IOSTANDARD=LVCMOS33; # JP2-23 
+NET "clear_vert_b" LOC="D19" | IOSTANDARD=LVCMOS33; # JP2-24 
+NET "dac_cs_b" LOC="F17" | IOSTANDARD=LVCMOS33; # JP2-25 
+NET "dac_sck" LOC="D20" | IOSTANDARD=LVCMOS33; # JP2-26 
+NET "dac_sdi" LOC="J17" | IOSTANDARD=LVCMOS33; # JP2-27 
+NET "adc_rram_sck" LOC="F18" | IOSTANDARD=LVCMOS33; # JP2-28 
+NET "ext_1n" LOC="K17" | IOSTANDARD=LVCMOS33; # JP2-29 
+NET "ext_1n_bl_sel" LOC="F19" | IOSTANDARD=LVCMOS33; # JP2-30 
+NET "ext_1n_sl_sel" LOC="K16" | IOSTANDARD=LVCMOS33; # JP2-31 
+NET "ext_3n" LOC="M16" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP2-32 
+NET "ext_3n_bl_sel" LOC="J16" | IOSTANDARD=LVCMOS33; # JP2-33 
+NET "ext_3n_sl_sel" LOC="L15" | IOSTANDARD=LVCMOS33; # JP2-34 
+NET "ext_inference_enable_bl" LOC="V21" | IOSTANDARD=LVCMOS33; # JP2-37 
+NET "ext_inference_enable_sl" LOC="K20" | IOSTANDARD=LVCMOS33; # JP2-38 
+NET "ext_precharge_bl" LOC="V22" | IOSTANDARD=LVCMOS33; # JP2-39 
+NET "ext_precharge_sl" LOC="K19" | IOSTANDARD=LVCMOS33; # JP2-40 
+NET "ext_turn_on_wl" LOC="T21" | IOSTANDARD=LVCMOS33; # JP2-41 
+NET "adc_rram_cnv" LOC="U20" | IOSTANDARD=LVCMOS33; # JP2-42 
+NET "adc_rram_sdo" LOC="T22" | IOSTANDARD=LVCMOS33; # JP2-43 
+NET "sel_tia" LOC="U22" | IOSTANDARD=LVCMOS33; # JP2-44 
+NET "sel_vfb" LOC="P21" | IOSTANDARD=LVCMOS33; # JP2-45 
+NET "forward" LOC="R20" | IOSTANDARD=LVCMOS33; # JP2-46 
+NET "ifat_mode" LOC="P22" | IOSTANDARD=LVCMOS33; # JP2-47 
+NET "inference_mode" LOC="R22" | IOSTANDARD=LVCMOS33; # JP2-48 
+NET "latch_en" LOC="M21" | IOSTANDARD=LVCMOS33; # JP2-49 
+NET "lfsr_mode" LOC="N20" | IOSTANDARD=LVCMOS33; # JP2-50 
+NET "lfsrhorz_clk" LOC="M22" | IOSTANDARD=LVCMOS33; # JP2-51 
+NET "lfsrpulse" LOC="N22" | IOSTANDARD=LVCMOS33; # JP2-52 
+NET "dec_enable_horz" LOC="L20" | IOSTANDARD=LVCMOS33; # JP2-53 
+NET "dec_enable_vert" LOC="M20" | IOSTANDARD=LVCMOS33; # JP2-54 
+NET "enable_ota" LOC="L22" | IOSTANDARD=LVCMOS33; # JP2-57 
+NET "reg_write_enable_horz" LOC="L19" | IOSTANDARD=LVCMOS33; # JP2-58 
+NET "reg_write_enable_vert" LOC="H21" | IOSTANDARD=LVCMOS33; # JP2-59 
+NET "register_mode" LOC="K21" | IOSTANDARD=LVCMOS33; # JP2-60 
+NET "select_write_reg<0>" LOC="H22" | IOSTANDARD=LVCMOS33; # JP2-61 
+NET "select_write_reg<1>" LOC="K22" | IOSTANDARD=LVCMOS33; # JP2-62 
+NET "core_enable_clk" LOC="F21" | IOSTANDARD=LVCMOS33; # JP2-63 
+NET "core_enable_in" LOC="G20" | IOSTANDARD=LVCMOS33; # JP2-64 
+NET "sw_cds" LOC="F22" | IOSTANDARD=LVCMOS33; # JP2-65 
+NET "sw_cds_vref" LOC="G22" | IOSTANDARD=LVCMOS33; # JP2-66 
+NET "sw_feedback" LOC="D21" | IOSTANDARD=LVCMOS33; # JP2-67 
+NET "sw_in_sample" LOC="E20" | IOSTANDARD=LVCMOS33; # JP2-68 
+NET "sw_integ" LOC="D22" | IOSTANDARD=LVCMOS33; # JP2-69 
+NET "sw_ota_loop" LOC="E22" | IOSTANDARD=LVCMOS33; # JP2-70 
+NET "trigger_in" LOC="B21" | IOSTANDARD=LVCMOS33; # JP2-71 
+NET "turn_off_precharge" LOC="C20" | IOSTANDARD=LVCMOS33; # JP2-72 
+NET "vcomp_config<0>" LOC="B22" | IOSTANDARD=LVCMOS33; # JP2-73 
+NET "vcomp_config<1>" LOC="C22" | IOSTANDARD=LVCMOS33; # JP2-74 
+NET "vlevel1_config<0>" LOC="A21" | IOSTANDARD=LVCMOS33; # JP2-75 
+NET "vlevel1_config<1>" LOC="A20" | IOSTANDARD=LVCMOS33; # JP2-76 
+NET "vlevel2_config<0>" LOC="J20" | IOSTANDARD=LVCMOS33; # JP2-77
+NET "vlevel2_config<1>" LOC="J22" | IOSTANDARD=LVCMOS33; # JP2-79 
+NET "vupdate_config<0>" LOC="W20" | IOSTANDARD=LVCMOS33; # JP1-15 
+NET "vupdate_config<1>" LOC="T19" | IOSTANDARD=LVCMOS33; # JP1-16 
+NET "wupdate_clk<0>" LOC="W22" | IOSTANDARD=LVCMOS33; # JP1-17 
+NET "wupdate_clk<1>" LOC="T20" | IOSTANDARD=LVCMOS33; # JP1-18 
+NET "wupdate_mode" LOC="U19" | IOSTANDARD=LVCMOS33; # JP1-19 
+NET "wupdate_pulse" LOC="P17" | IOSTANDARD=LVCMOS33; # JP1-20 
+NET "lfsrhorz_set_b" LOC="V20" | IOSTANDARD=LVCMOS33; # JP1-21 
+NET "reg_config<0>" LOC="N16" | IOSTANDARD=LVCMOS33; # JP1-22 
+NET "reg_config<1>" LOC="C5" | IOSTANDARD=LVCMOS33; # JP1-23 
+NET "addr_horz<0>" LOC="M17" | IOSTANDARD=LVCMOS33; # JP1-24 
+NET "addr_horz<1>" LOC="A5" | IOSTANDARD=LVCMOS33; # JP1-25 
+NET "spi_clock_0<0>" LOC="M18" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP1-26 
+NET "spi_clock_0<1>" LOC="D14" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP1-27 
+NET "addr_horz<2>" LOC="P18" | IOSTANDARD=LVCMOS33; # JP1-28 
+NET "addr_vert<0>" LOC="C14" | IOSTANDARD=LVCMOS33; # JP1-29 
+NET "addr_vert<1>" LOC="R19" | IOSTANDARD=LVCMOS33; # JP1-30 
+NET "addr_vert<2>" LOC="E16" | IOSTANDARD=LVCMOS33; # JP1-31 
+NET "spi_clock_1_3<0>" LOC="D9" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP1-32 
+NET "spi_clock_1_3<1>" LOC="D17" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP1-33 
+NET "spi_clock_4_7<0>" LOC="C8" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP1-34 
+NET "spi_clock_4_7<1>" LOC="D7" | IOSTANDARD=LVCMOS33 | DRIVE=2; # JP1-37 
+NET "lfsr_out<0>" LOC="D10" | IOSTANDARD=LVCMOS33; # JP1-38 
+NET "lfsr_out<1>" LOC="D8" | IOSTANDARD=LVCMOS33; # JP1-39 
+NET "shift2chip<0>" LOC="C10" | IOSTANDARD=LVCMOS33; # JP1-40 
+NET "shift2chip<1>" LOC="L17" | IOSTANDARD=LVCMOS33; # JP1-41 
+NET "shift2chip<2>" LOC="D11" | IOSTANDARD=LVCMOS33; # JP1-42 
+NET "shift2chip<3>" LOC="K18" | IOSTANDARD=LVCMOS33; # JP1-43
+NET "shift2chip<4>" LOC="C12" | IOSTANDARD=LVCMOS33; # JP1-44 
+NET "shift2chip<5>" LOC="D6" | IOSTANDARD=LVCMOS33; # JP1-45 
+NET "shift2chip<6>" LOC="D15" | IOSTANDARD=LVCMOS33; # JP1-46 
+NET "shift2chip<7>" LOC="C6" | IOSTANDARD=LVCMOS33; # JP1-47 
+NET "shift2chip<8>" LOC="C16" | IOSTANDARD=LVCMOS33; # JP1-48 
+NET "shift2chip<9>" LOC="A3" | IOSTANDARD=LVCMOS33; # JP1-49 
+NET "shift2chip<10>" LOC="B6" | IOSTANDARD=LVCMOS33; # JP1-50 
+NET "shift2chip<11>" LOC="A4" | IOSTANDARD=LVCMOS33; # JP1-51 
+NET "shift2chip<12>" LOC="A6" | IOSTANDARD=LVCMOS33; # JP1-52 
+NET "shift2chip<13>" LOC="B8" | IOSTANDARD=LVCMOS33; # JP1-53 
+NET "shift2chip<14>" LOC="C7" | IOSTANDARD=LVCMOS33; # JP1-54 
+NET "shift2chip<15>" LOC="A8" | IOSTANDARD=LVCMOS33; # JP1-57 
+NET "shift2ok<0>" LOC="A7" | IOSTANDARD=LVCMOS33; # JP1-58 
+NET "shift2ok<1>" LOC="B10" | IOSTANDARD=LVCMOS33; # JP1-59 
+NET "shift2ok<2>" LOC="C9" | IOSTANDARD=LVCMOS33; # JP1-60 
+NET "shift2ok<3>" LOC="A10" | IOSTANDARD=LVCMOS33; # JP1-61 
+NET "shift2ok<4>" LOC="A9" | IOSTANDARD=LVCMOS33; # JP1-62 
+NET "shift2ok<5>" LOC="C13" | IOSTANDARD=LVCMOS33; # JP1-63 
+NET "shift2ok<6>" LOC="B12" | IOSTANDARD=LVCMOS33; # JP1-64 
+NET "shift2ok<7>" LOC="A13" | IOSTANDARD=LVCMOS33; # JP1-65 
+NET "shift2ok<8>" LOC="A12" | IOSTANDARD=LVCMOS33; # JP1-66 
+NET "shift2ok<9>" LOC="C15" | IOSTANDARD=LVCMOS33; # JP1-67 
+NET "shift2ok<10>" LOC="B14" | IOSTANDARD=LVCMOS33; # JP1-68 
+NET "shift2ok<11>" LOC="A15" | IOSTANDARD=LVCMOS33; # JP1-69 
+NET "shift2ok<12>" LOC="A14" | IOSTANDARD=LVCMOS33; # JP1-70 
+NET "shift2ok<13>" LOC="C17" | IOSTANDARD=LVCMOS33; # JP1-71 
+NET "shift2ok<14>" LOC="B16" | IOSTANDARD=LVCMOS33; # JP1-72 
+NET "shift2ok<15>" LOC="A17" | IOSTANDARD=LVCMOS33; # JP1-73 
+NET "dmux_oe_b<0>" LOC="A16" | IOSTANDARD=LVCMOS33; # JP1-74 
+NET "dmux_oe_b<1>" LOC="A18" | IOSTANDARD=LVCMOS33; # JP1-75 
+NET "core_enable_reset_b" LOC="B18" | IOSTANDARD=LVCMOS33; # JP1-76 
+NET "sel_spare" LOC="C11" | IOSTANDARD=LVCMOS33; # JP1-77 
+NET "reg_controlled_wl" LOC="A11" | IOSTANDARD=LVCMOS33; # JP1-79 

@@ -1,0 +1,4 @@
+# Directories to ignore
+data/
+HDL_v1/
+python_v1/

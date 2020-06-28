@@ -1,0 +1,11 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Files from Opal Kelly
+ok.py
+
+# Jupyter Notebooks for testing
+*.ipynb
+.ipynb_checkpoints/
