@@ -13,18 +13,33 @@ def random_write(dev, vert, addr_horz, addr_vert, addr, din, enable_core=False):
     if enable_core:
         enable_single_core(dev, addr_horz, addr_vert)
     dev.SetWireInValue(0x13, swap_addr(addr_horz) | swap_addr(addr_vert) << 3)
-    dev.SetWireInValue(0x04, ((din & 0b11) << 8) | (addr & 0xff))
-    if vert:
-        dev.SetWireInValue(0x03, 0b1010111100)
-    else:
-        dev.SetWireInValue(0x03, 0b1001111100)
+    dev.SetWireInValue(0x04, vert << 10 | ((din & 0b11) << 8) | (addr & 0xff))
     dev.UpdateWireIns()
     dev.ActivateTriggerIn(0x44, 1)
-    # dev.SetWireInValue(0x03, 0b100000)
-    # dev.UpdateWireIns()
 
     
-def translate_bytearray(btarray, fwd):
+def translate_bytearray(btarray, fwd, pipe_out_steps, read_shift_regs=[True, True]):
+    np_bytes = np.frombuffer(btarray, dtype=np.uint8)
+    np_bits = np.unpackbits(np_bytes, bitorder='little')
+    L = len(np_bits) // 2
+    output = np.zeros(L)
+    if read_shift_regs[0]:
+        mask = (np_bits[0::2] == 1)
+        output[mask] = -1
+    if read_shift_regs[1]:
+        mask = (np_bits[1::2] == 1)
+        output[mask] = 1
+    if read_shift_regs[0] and read_shift_regs[1]:
+        mask = (np_bits[0::2] == 1) & (np_bits[1::2] == 1)
+        output[mask] = 3
+    if fwd:
+        output = output.reshape([-1, pipe_out_steps * 256])
+        output = output[:, ::-1]
+        output = output.flatten()
+    return output
+
+
+def translate_bytearray_depracated(btarray, fwd):
     output = np.zeros(len(btarray) * 4, dtype=np.int8)
     for i, bt in enumerate(btarray):
         for j in range(4):
@@ -44,15 +59,28 @@ def translate_bytearray(btarray, fwd):
 
 def encode_bytearray(nparray, fwd, pipe_in_steps):
     L = len(nparray)
-    L_bt = L/4
+    if fwd:
+        nparray = nparray.reshape([-1, 256 * pipe_in_steps])
+        nparray = nparray[:, ::-1]
+        nparray = nparray.flatten()
+    bit_array = np.zeros(L*2, dtype=bool)
+    bit_array[0::2] = (nparray == -1)
+    bit_array[1::2] = (nparray == 1)
+    return bytearray(np.packbits(bit_array, bitorder='little'))
+
+
+# Deprecated
+def encode_bytearray_deprecated(nparray, fwd, pipe_in_steps):
+    L = len(nparray)
+    L_bt = L//4
     M = 256 * pipe_in_steps
-    M_bt = M/4
+    M_bt = M//4
     btarray = bytearray(L_bt)
     for i, n in enumerate(nparray):
+        if n == 0:
+            continue
         if n == 1:
             bits = 0b10
-        elif n == 0:
-            bits = 0b00
         elif n == -1:
             bits = 0b01
         else:
@@ -63,7 +91,7 @@ def encode_bytearray(nparray, fwd, pipe_in_steps):
             btarray[i//M*M_bt + M_bt-1-(i%M)//4] = (btarray[i//M*M_bt + M_bt-1-(i%M)//4] & (~mask)) | (bits << (2*(3-i%4)))
         else:
             mask = 0b11 << (2*(i%4))
-            btarray[i/4] = (btarray[i/4] & (~mask)) | (bits << (2*(i%4)))
+            btarray[i//4] = (btarray[i//4] & (~mask)) | (bits << (2*(i%4)))
     return btarray
 
 
@@ -77,6 +105,7 @@ def _compose_row_mask(row_addr):
     return row_mask
 
 
+# Deprecated
 def _swap_btarray_order(datain, num_words):
     num_bytes = num_words * 4
     num_rows = len(datain) // num_bytes
@@ -87,12 +116,8 @@ def _swap_btarray_order(datain, num_words):
     return data_swapped
 
 
-def pipe_out(dev, row_addr, forward, num_words, setup=True):
-    if setup:
-        dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0xff) << 18)
-        dev.UpdateWireIns()
+def pipe_out(dev, row_addr, forward, num_words, pipe_out_steps, read_shift_regs=[True, True]):
     datain = bytearray(num_words*4*len(row_addr))
-    # time.sleep(0.01)
     while True:
         dev.UpdateWireOuts()
         status = dev.GetWireOutValue(0x28)
@@ -103,25 +128,14 @@ def pipe_out(dev, row_addr, forward, num_words, setup=True):
     status = dev.GetWireOutValue(0x28)
     assert status & (0b1 << 6) != 0
     assert status & (0b1 << 11) != 0
-    if forward:
-        datain = _swap_btarray_order(datain, num_words)
-    return translate_bytearray(datain, forward).reshape([len(row_addr), -1])
+    return translate_bytearray(datain, forward, pipe_out_steps, read_shift_regs).reshape([len(row_addr), -1])
 
     
-def spi_read(dev, row_addr, forward, overwrite=True, shift_multiplier=1, pipe_out_steps=1, is_pipe_out=True, num_words=16, trigger=True):
-    dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0xff) << 18)
-    if forward:
-        if overwrite:
-            dev.SetWireInValue(0x03, 0b1111000000)
-        else:
-            dev.SetWireInValue(0x03, 0b1110000000)
-    else:
-        if overwrite:
-            dev.SetWireInValue(0x03, 0b0111000000)
-        else:
-            dev.SetWireInValue(0x03, 0b0101000000)
-    dev.SetWireInValue(0x0D, 0b01 | (shift_multiplier & 0xf) << 2 | (pipe_out_steps & 0xf) << 10)
-    dev.UpdateWireIns()
+def spi_read(dev, row_addr, forward, overwrite=True, shift_multiplier=1, pipe_out_steps=1, read_shift_regs=[True, True], is_pipe_out=True, num_words=16, trigger=True, prep=True):
+    if prep:
+        dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0xff) << 18)
+        dev.SetWireInValue(0x0D, 0b01 | (shift_multiplier & 0xf) << 2 | (pipe_out_steps & 0xf) << 10 | forward << 14)
+        dev.UpdateWireIns()
     
     if trigger:
         dev.ActivateTriggerIn(0x44, 0)
@@ -131,51 +145,36 @@ def spi_read(dev, row_addr, forward, overwrite=True, shift_multiplier=1, pipe_ou
             if status & 0b100 != 0:
                 break
 
-    if pipe_out:
-        return pipe_out(dev, row_addr, forward, num_words, setup=False)
+    if is_pipe_out:
+        return pipe_out(dev, row_addr, forward, num_words, pipe_out_steps, read_shift_regs)
 
 
-def pipe_in(dev, inputs, row_addr, forward, pipe_in_steps=1):
-    if len(inputs.shape) == 1:
-        inputs = np.array([inputs])
-        row_addr = [row_addr]
-    # Check the input dimension
-    assert inputs.shape[0] == len(row_addr)
-    num_words = inputs.shape[1] // 16
-    dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0x3ff) << 8)
-    dev.UpdateWireIns()
-
-    nparray = np.empty([0,])
-    for inp in inputs:
-        nparray = np.hstack([nparray, inp])
-
-    dataout = encode_bytearray(nparray, forward, pipe_in_steps=pipe_in_steps)
+def pipe_in(dev, inputs, row_addr, forward, pipe_in_steps=1, check_done=False):
+    dataout = encode_bytearray(inputs.flatten(), forward, pipe_in_steps=pipe_in_steps)
     data = dev.WriteToPipeIn(0x80, dataout)
-    while True:
-        dev.UpdateWireOuts()
-        status = dev.GetWireOutValue(0x28)
-        if status & 0b100000 != 0:
-            break       
+    if check_done:
+        while True:
+            dev.UpdateWireOuts()
+            status = dev.GetWireOutValue(0x28)
+            if status & 0b100000 != 0:
+                break       
 
 
-def spi_write(dev, row_addr, forward, inputs=None, overwrite=True, shift_multiplier=1, pipe_in_steps=1, is_pipe_in=True, trigger=True):
-    if pipe_in:
+def spi_write(dev, row_addr, forward, inputs=None, overwrite=True, shift_multiplier=1, pipe_in_steps=1, is_pipe_in=True, trigger=True, prep=True):
+    if prep:
+        num_words = 0
+        if inputs is not None:
+            if len(inputs.shape) == 1:
+                num_words = inputs.shape[0] // 16
+            else:
+                num_words = inputs.shape[1] // 16
+        dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0x3ff) << 8)
+        dev.SetWireInValue(0x0D, 0b10 | (shift_multiplier & 0xf) << 2 | (pipe_in_steps & 0xf) << 6 | forward << 14)
+        dev.UpdateWireIns()
+
+    if is_pipe_in:
         pipe_in(dev, inputs, row_addr, forward, pipe_in_steps=pipe_in_steps)
-    else:
-        dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff))
     
-    if forward:
-        if overwrite:
-            dev.SetWireInValue(0x03, 0b1111000000)
-        else:
-            dev.SetWireInValue(0x03, 0b1101000000)
-    else:
-        if overwrite:
-            dev.SetWireInValue(0x03, 0b0111000000)
-        else:
-            dev.SetWireInValue(0x03, 0b0110000000)
-    dev.SetWireInValue(0x0D, 0b10 | (shift_multiplier & 0xf) << 2 | (pipe_in_steps & 0xf) << 6)
-    dev.UpdateWireIns()
     if trigger:
         dev.ActivateTriggerIn(0x44, 0)
         while True:
@@ -185,30 +184,46 @@ def spi_write(dev, row_addr, forward, inputs=None, overwrite=True, shift_multipl
                 break       
 
 
-def write_single_core(dev, row_addr, col_addr, vert, is_pipe_in=False, inputs=None, trigger=True):
-    if vert:
-        shift_multiplier = 2 * (col_addr + 1)
+def write_single_core(dev, row_addr, col_addr, vert, is_pipe_in=False, inputs=None, trigger=True, prep=True):
+    if col_addr <= 2:
+        fwd = True
+        if vert:
+            shift_multiplier = 2 * (col_addr + 1)
+        else:
+            shift_multiplier = 2 * col_addr + 1
     else:
-        shift_multiplier = 2 * col_addr + 1
-    spi_write(dev, [row_addr], True, inputs=np.array([inputs]), shift_multiplier=shift_multiplier, is_pipe_in=is_pipe_in, trigger=trigger)
+        fwd = False
+        if vert:
+            shift_multiplier = 2 * (5 - col_addr) + 1
+        else:
+            shift_multiplier = 2 * (6 - col_addr)
+    spi_write(dev, [row_addr], fwd, inputs=np.array([inputs]), shift_multiplier=shift_multiplier, is_pipe_in=is_pipe_in, trigger=trigger, prep=prep)
 
 
-def read_single_core(dev, row_addr, col_addr, vert, is_pipe_out=False, trigger=True):
-    if vert:
-        shift_multiplier = 2 * (col_addr + 1)
+def read_single_core(dev, row_addr, col_addr, vert, read_shift_regs=[True, True], is_pipe_out=False, batch_size=1, trigger=True, prep=True):
+    if col_addr <= 2:
+        fwd = False
+        if vert:
+            shift_multiplier = 2 * (col_addr + 1)
+        else:
+            shift_multiplier = 2 * col_addr + 1
     else:
-        shift_multiplier = 2 * col_addr + 1
-    return spi_read(dev, [row_addr], False, shift_multiplier=shift_multiplier, is_pipe_out=is_pipe_out, num_words=16, trigger=trigger)[0]
+        fwd = True
+        if vert:
+            shift_multiplier = 2 * (5 - col_addr) + 1
+        else:
+            shift_multiplier = 2 * (6 - col_addr)
+    return spi_read(dev, [row_addr], fwd, shift_multiplier=shift_multiplier, read_shift_regs=read_shift_regs,
+                    is_pipe_out=is_pipe_out, num_words=16*batch_size, trigger=trigger, prep=prep)[0]
 
 
-def write_rows(dev, row_addr, vert, is_pipe_in=False, inputs=None, pipe_in_steps=6, trigger=True):
-    # if inputs is not None:
-    #     assert inputs.shape[1] == 256 * pipe_in_steps
-    spi_write(dev, row_addr, vert, inputs=inputs, shift_multiplier=2, pipe_in_steps=pipe_in_steps, is_pipe_in=is_pipe_in, trigger=trigger)
+def write_rows(dev, row_addr, vert, is_pipe_in=False, inputs=None, pipe_in_steps=6, trigger=True, prep=True):
+    spi_write(dev, row_addr, vert, inputs=inputs, shift_multiplier=2, pipe_in_steps=pipe_in_steps, is_pipe_in=is_pipe_in, trigger=trigger, prep=prep)
 
 
-def read_rows(dev, row_addr, vert, is_pipe_out=False, pipe_out_steps=6, trigger=True):
-    return spi_read(dev, row_addr, not vert, shift_multiplier=2, pipe_out_steps=pipe_out_steps, is_pipe_out=is_pipe_out, num_words=16*pipe_out_steps, trigger=trigger)
+def read_rows(dev, row_addr, vert, read_shift_regs=[True, True], is_pipe_out=False, pipe_out_steps=6, trigger=True, prep=True):
+    return spi_read(dev, row_addr, not vert, shift_multiplier=2, pipe_out_steps=pipe_out_steps, read_shift_regs=read_shift_regs,
+                    is_pipe_out=is_pipe_out, num_words=16*pipe_out_steps, trigger=trigger, prep=prep)
 
 
 def enable_core(dev, addr_horz, addr_vert, dec_enable=0b11):

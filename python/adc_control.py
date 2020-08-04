@@ -59,9 +59,9 @@ def read_current_auto_range(dev, t_shld, t_delta, vref=0.9, output_t=False, verb
 
     current = C_INTEG * delta_v / (t_delta * CLK_PERIOD)
     if verbose:
-        print d_start
-        print d_end
-        print t_delta
+        print(d_start)
+        print(d_end)
+        print(t_delta)
     if output_t:
         return (current, t_shld, t_delta)
     return current
@@ -82,7 +82,7 @@ def read_average_resistance(dev, vread, vref, t_shld, t_delta, read_cycles, igno
     dev.UpdateWireIns()
     
     currents = np.zeros(read_cycles)
-    for i in xrange(read_cycles):
+    for i in range(read_cycles):
         currents[i], t_shld, t_delta = read_current_auto_range(dev, t_shld, t_delta, vref=vref,
                                                     output_t=True, verbose=verbose)
     

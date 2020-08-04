@@ -39,7 +39,7 @@ def read_single_rram(dev, row, col, vread, vref, t_shld, t_delta):
 # Deprecated. Replaced by read_average_resistance in adc_control
 def read_average(dev, vread, vref, t_shld, t_delta, read_cycles, ignore_cycles):
     readings = np.zeros(read_cycles)
-    for i in xrange(read_cycles):
+    for i in range(read_cycles):
         readings[i] = adc.read_resistance(dev, vread, vref, t_shld, t_delta, verbose=False)
     reading_avg = np.mean(readings[ignore_cycles:])
     return reading_avg
@@ -130,24 +130,24 @@ def find_vset_wl(dev, row, col, core_row, core_col, vset_bl, vset_wl_start, vset
     # enable_wupdate_mode(dev)
     res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
     if verbose:
-        print res
+        print(res)
     if res > 0 and res <= r_target:
-        print 'The cell has already been formed.'
+        print('The cell has already been formed.')
         return (0.0, res)
     vset_wl_range = np.arange(vset_wl_start, vset_wl_end, v_incr)
     for vset_wl in vset_wl_range:
         apply_set_pulse(dev, vset_bl, vset_wl, tset)
         res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
         if verbose:
-            print res
+            print(res)
         if res > 0 and res <= r_target:
             res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
             if res > 0 and res <= r_target:
-                print 'Vset_wl = %f, Rset = %f' % (vset_wl, res)
+                print('Vset_wl = %f, Rset = %f' % (vset_wl, res))
                 # disable_wupdate_mode(dev)
                 return (vset_wl, res)
     # disable_wupdate_mode(dev)
-    print 'The RRAM is not SET'
+    print('The RRAM is not SET')
     return (0, 0)
 
 
@@ -157,23 +157,23 @@ def find_vset_bl(dev, row, col, core_row, core_col, vset_wl, vset_bl_start, vset
     
     res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
     if verbose:
-        print res
+        print(res)
     if res > 0 and res <= r_target:
-        print 'The cell has already been formed.'
+        print('The cell has already been formed.')
         return (0.0, res)
     vset_bl_range = np.arange(vset_bl_start, vset_bl_end, v_incr)
     for vset_bl in vset_bl_range:
         apply_set_pulse(dev, vset_bl, vset_wl, tset)
         res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
         if verbose:
-            print res
+            print(res)
         if res > 0 and res <= r_target:
             res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
-            print 'Vset = %f, Rset = %f' % (vset_bl, res)
+            print('Vset = %f, Rset = %f' % (vset_bl, res))
             # disable_wupdate_mode(dev)
             return (vset_bl, res)
     # disable_wupdate_mode(dev)
-    print 'The RRAM is not SET'
+    print('The RRAM is not SET')
     return (0, 0)
     
     
@@ -184,7 +184,7 @@ def program_increment(dev, row, col, core_row, core_col,
                       read_cycles=8, ignore_cycles=3,
                       incremental=True, adc_setup=False, verbose=1, record_history=False, final_pulse=None):
 
-    write_reg(dev, row, col, core_row, core_col)
+    write_reg(dev, int(row), int(col), int(core_row), int(core_col))
     readings = []
     pulses = []
     pulse_count = 0
@@ -194,7 +194,7 @@ def program_increment(dev, row, col, core_row, core_col,
     read = adc.read_average_resistance(dev, vread=vread, vref=vref, t_shld=t_shld, t_delta=t_delta,
                                        read_cycles=read_cycles, ignore_cycles=ignore_cycles, dac_setup=adc_setup)
     if verbose > 1:
-        print read
+        print(read)
     if record_history:
         readings.append(read)
     iter_count = 0
@@ -209,7 +209,7 @@ def program_increment(dev, row, col, core_row, core_col,
             read = adc.read_average_resistance(dev, vread=vread, vref=vref, t_shld=t_shld, t_delta=t_delta,
                                                read_cycles=read_cycles, ignore_cycles=ignore_cycles, dac_setup=adc_setup)
             if verbose > 1:
-                print read
+                print(read)
             if record_history:
                 pulses.append(-v_reset)
                 readings.append(read)
@@ -226,7 +226,7 @@ def program_increment(dev, row, col, core_row, core_col,
             read = adc.read_average_resistance(dev, vread=vread, vref=vref, t_shld=t_shld, t_delta=t_delta,
                                                read_cycles=read_cycles, ignore_cycles=ignore_cycles, dac_setup=adc_setup)
             if verbose > 1:
-                print read
+                print(read)
             if record_history:
                 pulses.append(v_set)
                 readings.append(read)
@@ -241,11 +241,11 @@ def program_increment(dev, row, col, core_row, core_col,
                                                    read_cycles=read_cycles, ignore_cycles=ignore_cycles, dac_setup=adc_setup)
                 if read > r_low and read < r_high:
                     if verbose > 0:
-                        print 'RRAM is programmed within the range.'
+                        print('RRAM is programmed within the range.')
                     return (True, read, pulse_count, pulses, readings)
         if iter_count > iteration_limit or max_pulse_count >= max_pulse_limit:
             if verbose > 0:
-                print 'Programming exceeds maximum iteration.'
+                print('Programming exceeds maximum iteration.')
             return (False, read, pulse_count, pulses, readings)
 
 
@@ -363,7 +363,7 @@ def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoc
     pulses = []
     g_min_time = 0
 
-    for epoch in xrange(num_epoch):
+    for epoch in range(num_epoch):
         for ri, r in enumerate(rows):
             for ci, c in enumerate(cols):
                 if G[ri,ci] < g_min:
@@ -403,9 +403,9 @@ def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoc
                 if record_pulse:
                     pulses.append(pulse_train)
                 if verbose > 0:
-                    print 'Finished programming %d row %d col' % (r, c)
-        print 'Finished programming epoch %d.' % epoch
-    print g_min_time
+                    print('Finished programming %d row %d col' % (r, c))
+        print('Finished programming epoch %d.' % epoch)
+    print(g_min_time)
     return (program_sucess, 1/final_readings, num_pulses, pulses)
 
 
@@ -418,5 +418,5 @@ def read_array(dev, rows, cols, core_row, core_col, read_cycle=20, ignore_cycle=
             write_reg(dev, r, c, core_row, core_col)
             readings_post[ri, ci] = adc.read_average_resistance(dev, vread, vref, 20, 40, read_cycle, ignore_cycle)
             if verbose > 0:
-               print 'Finished reading %d row %d col' % (r, c)
+               print('Finished reading %d row %d col' % (r, c))
     return 1/readings_post

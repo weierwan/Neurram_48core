@@ -77,8 +77,8 @@ def dac_program_single_daisy(dev, dac_idx, chnl_idx, voltage, vrefs=DAC_VREFS, v
 
 
 def dac_program_all(dev, voltages=DAC_VOLTAGES, vrefs=DAC_VREFS):
-    for c in xrange(DAC_NUM_CHANNEL):
-        for i in xrange(DAC_NUM):
+    for c in range(DAC_NUM_CHANNEL):
+        for i in range(DAC_NUM):
             volt = voltages[DAC_NUM-1-i][c]
             dac_program_single(dev, c, volt, vrefs[DAC_NUM-1-i])
             while True:

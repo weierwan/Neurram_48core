@@ -279,7 +279,7 @@ always @(posedge clk, posedge rst) begin
                 ext_3n <= 0;
                 precharge_off <= 0;
                 neuron_read_trigger <= 2'b00;
-                clk_counter <= clk_counter + 1;
+                clk_counter <= 0;
                 idle <= 0;
                 register_mode <= 0;
                 sampling <= 1;

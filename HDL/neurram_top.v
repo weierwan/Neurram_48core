@@ -113,7 +113,7 @@ wire spi_ctrl_clk; // SPI interface clock
 assign dac_clk = clk_6MHz;
 assign adc_rram_clk = clk_12MHz;
 assign neurram_clk = clk_12MHz;
-assign spi_ctrl_clk = clk_12MHz;
+assign spi_ctrl_clk = clk_25MHz;
 
 // Target interface bus:
 wire         okClk;
@@ -136,6 +136,7 @@ wire [31:0]  ep0Bwire; // Weight update voltage muxes configuration
 wire [31:0]  ep0Cwire; // Weight update mode pulse width
 wire [31:0]  ep0Dwire; // SPI read and write config
 wire [31:0]  ep0Ewire; // matmul unsigned control signals
+wire [31:0]  ep0Fwire; // multi-level output control signals
 wire [31:0]  ep10wire; // debugging controls
 wire [31:0]  ep11wire; // neurram energy testing cycles
 wire [31:0]  ep12wire; // Auto-ranging vref
@@ -199,6 +200,7 @@ okWireIn     ep0B (.okHE(okHE),                             .ep_addr(8'h0b), .ep
 okWireIn     ep0C (.okHE(okHE),                             .ep_addr(8'h0c), .ep_dataout(ep0Cwire));
 okWireIn     ep0D (.okHE(okHE),                             .ep_addr(8'h0d), .ep_dataout(ep0Dwire));
 okWireIn     ep0E (.okHE(okHE),                             .ep_addr(8'h0e), .ep_dataout(ep0Ewire));
+okWireIn     ep0F (.okHE(okHE),                             .ep_addr(8'h0f), .ep_dataout(ep0Fwire));
 okWireIn     ep10 (.okHE(okHE),                             .ep_addr(8'h10), .ep_dataout(ep10wire));
 okWireIn     ep11 (.okHE(okHE),                             .ep_addr(8'h11), .ep_dataout(ep11wire));
 okWireIn     ep12 (.okHE(okHE),                             .ep_addr(8'h12), .ep_dataout(ep12wire));
@@ -373,8 +375,8 @@ assign lfsr_mode = ep05wire[2] | lfsr_mode_on; //& (~(neuron_compare_write | reg
 assign reg_controlled_wl = ep06wire[5];
 // assign reg_read_enable_horz = ep03wire[4];
 // assign reg_read_enable_vert = ep03wire[5];
-assign reg_write_enable_horz = ep03wire[6];
-assign reg_write_enable_vert = ep03wire[7];
+// assign reg_write_enable_horz = ep03wire[6];
+// assign reg_write_enable_vert = ep03wire[7];
 // assign register_mode = ep05wire[3];
 assign select_write_reg = ep04wire[9:8];
 // assign select_write_reg_vert = ep04wire[11:10];
@@ -396,11 +398,6 @@ assign wupdate_mode = (wupdate_mode_pulse | ep05wire[4]) & (~(register_mode | ep
 assign lfsrhorz_set_b = ~ep0Awire[0];
 //assign sel_vfb = 1'b0; //TODO
 
-wire [1:0] ml_read_reg_config_i [3:0];
-wire [1:0] ml_read_reg_config;
-assign ml_read_reg_config[0] = ml_read_reg_config_i[0][0] | ml_read_reg_config_i[1][0] | ml_read_reg_config_i[2][0] | ml_read_reg_config_i[3][0];
-assign ml_read_reg_config[1] = 1'b0;
-assign reg_config = ml_read_idle ? ep03wire[9:8] : ml_read_reg_config;
 
 assign addr_horz = ep13wire[2:0];
 assign addr_vert = ep13wire[5:3];
@@ -480,32 +477,43 @@ wire [7:0] state_spi_clk, state_spi_idle;
 wire [1:0] reg_shift_out, reg_shift_in;
 wire [1:0] spi_config;
 wire [3:0] spi_shift_multiplier, spi_pipe_in_steps, spi_pipe_out_steps;
-wire [256*3-1:0] spi_from_neurram[7:0];
+wire [256*3/2-1:0] spi_from_neurram[7:0];
 wire all_spi_idle;
 wire [1:0] spi_clk_random_and_neuron;
 wire record_spi;
+wire shift_fwd;
+wire [3:0] nmlo_shift_multiplier;
+wire nmlo_spi_trigger;
 
 assign neurram_rst = ep00wire[1];
 assign reg_spi_trigger = ep44wire[0] | matmul_spi_trig;
 assign reg_rand_access_trigger = ep44wire[1];
-assign spi_config = ep0Dwire[1:0];
-assign spi_shift_multiplier = ep0Dwire[5:2];
+assign spi_config = ml_read_idle ? ep0Dwire[1:0] : 2'b00;
+assign spi_shift_multiplier = ml_read_idle ? ep0Dwire[5:2] : nmlo_shift_multiplier;
 assign spi_pipe_in_steps = ep0Dwire[9:6];
 assign spi_pipe_out_steps = ep0Dwire[13:10];
 // assign reg_neuron_read_trigger = ep44wire[3:2];
 assign all_spi_idle = & state_spi_idle;
 assign ep28wire[2] = all_spi_idle;
 assign record_spi = ~ml_read_idle;
+assign shift_fwd = ml_read_idle ? ep0Dwire[14] : 1'b0;
+assign nmlo_spi_trigger = | ml_read_spi_trigger;
 
 neurram_reg_control neurram_reg(
 	.clk(spi_ctrl_clk),
 	.rst(neurram_rst),
-	.spi_trigger(reg_spi_trigger),
+	.spi_trigger(reg_spi_trigger | nmlo_spi_trigger),
 	.rand_access_trigger(reg_rand_access_trigger),
 	.neuron_read_trigger(reg_neuron_read_trigger),
+	.shift_fwd(shift_fwd),
+	.rand_access_vert(ep04wire[10]),
+	.inf_fwd(forward),
 	.state_spi_clk(1'b0),
 	.state_spi_idle(all_spi_idle),
-	.spi_clk(spi_clk_random_and_neuron)
+	.spi_clk(spi_clk_random_and_neuron),
+	.reg_config(reg_config),
+	.reg_write_enable_horz(reg_write_enable_horz),
+	.reg_write_enable_vert(reg_write_enable_vert)
 	);
 
 assign spi_clock_0[0] = state_spi_clk[0] | spi_clk_random_and_neuron[0];
@@ -712,11 +720,12 @@ wire arb_pipein2nmlo_idle, nmlo_pipe_in_full;
 wire [255:0] data_pipein2nmlo;
 wire [7:0] write_pipein2nmlo;
 wire [7:0] fifo_full_nmlo2pipein;
+wire [2:0] nmlo_num_core;
 
 assign ep28wire[7] = arb_pipein2nmlo_idle;
 assign ep28wire[12] = nmlo_pipe_in_full;
+assign nmlo_num_core = ep0Fwire[2:0];
 
-assign fifo_full_nmlo2pipein[7:4] = 4'b1111;
 
 arbiter_pipein2fifo #(.FIFO_SIZE(64)) arbiter_pipein2nmlo (
 	.clk(sys_clk),
@@ -725,7 +734,7 @@ arbiter_pipein2fifo #(.FIFO_SIZE(64)) arbiter_pipein2nmlo (
 	.pipe_in(ep81pipe),
 	.pipe_in_write(ep81write),
 	.core_select(core_select),
-	.num_words(10'd24),
+	.num_words(10'd12),
 	.idle(arb_pipein2nmlo_idle),
 	.pipe_in_full(nmlo_pipe_in_full),
 	.data2fifo(data_pipein2nmlo),
@@ -737,13 +746,12 @@ wire arb_nmlo2pipeout_idle, nmlo_pipe_out_empty;
 wire [255:0] data_nmlo2pipeout;
 wire [7:0] read_pipeout2nmlo;
 wire [7:0] empty_nmlo2pipeout, valid_nmlo2pipeout;
+wire [7:0] nmlo_pipeout_num_words;
 
 assign ep28wire[8] = arb_nmlo2pipeout_idle;
 assign ep28wire[13] = nmlo_pipe_out_empty;
+assign nmlo_pipeout_num_words = nmlo_num_core * 16;
 
-assign data_nmlo2pipeout[255:128] = 0;
-assign empty_nmlo2pipeout[7:4] = 4'b1111;
-assign valid_nmlo2pipeout[7:4] = 4'b0000;
 
 arbiter_fifo2pipeout #(.FIFO_SIZE(512)) arbiter_nmlo2pipeout(
 	.clk(sys_clk),
@@ -752,7 +760,7 @@ arbiter_fifo2pipeout #(.FIFO_SIZE(512)) arbiter_nmlo2pipeout(
 	.pipe_out(epA2pipe),
 	.pipe_out_read(epA2read),
 	.core_select(core_select),
-	.num_words(8'd192),
+	.num_words(nmlo_pipeout_num_words),
 	.idle(arb_nmlo2pipeout_idle),
 	.pipe_out_empty(nmlo_pipe_out_empty),
 	.data_from_fifo(data_nmlo2pipeout),
@@ -764,26 +772,27 @@ arbiter_fifo2pipeout #(.FIFO_SIZE(512)) arbiter_nmlo2pipeout(
 
 wire ml_read_trigger, ml_y_addr_trigger;
 wire ml_read_idle;
-wire [3:0] ml_read_idle_i;
-wire [3:0] ml_neuron_trigger;
+wire [7:0] ml_read_idle_i;
+wire [7:0] ml_neuron_trigger;
+wire matmul_d2a_nmlo_trigger;
 
-assign ml_read_trigger = ep45wire[5];
+assign ml_read_trigger = ep45wire[5] | matmul_d2a_nmlo_trigger;
 assign ml_y_addr_trigger = ep45wire[6];
 assign ml_read_idle = & ml_read_idle_i;
 assign ep28wire[3] = ml_read_idle;
 assign ml_read_neuron_trigger = | ml_neuron_trigger;
-
-assign ml_read_spi_trigger[7:4] = 0;
+assign nmlo_shift_multiplier = ep0Fwire[6:3];
 
 
 generate
-for (i=0; i<4; i=i+1) begin: gen_nmlo
+for (i=0; i<8; i=i+1) begin: gen_nmlo
 	neuron_multi_level_output nmlo(
 		.clk(neurram_clk),
 		.ok_clk(sys_clk),
 		.rst(neurram_rst),
 		.output_trigger(ml_read_trigger & core_select[i]),
 		.y_addr_trigger(ml_y_addr_trigger & core_select[i]),
+		.num_core(nmlo_num_core),
 		.idle(ml_read_idle_i[i]),
 		.pipe_in(data_pipein2nmlo[32*i +: 32]),
 		.in_fifo_wr_en(write_pipein2nmlo[i]),
@@ -795,7 +804,6 @@ for (i=0; i<4; i=i+1) begin: gen_nmlo
 		.neuron_idle(neuron_idle),
 		.spi_valid(all_spi_idle),
 		.spi_input(spi_from_neurram[i]),
-		.reg_config(ml_read_reg_config_i[i]),
 		.spi_read_trigger(ml_read_spi_trigger[i]),
 		.neuron_reset_trigger(ml_neuron_trigger[i])
 	);
@@ -834,9 +842,10 @@ wire [4:0] matmul_unsigned_pulse_mult;
 wire matmul_neuron_sample_trig, matmul_neuron_cds_trig, matmul_spi_trig;
 wire matmul_inference_mode_off, matmul_ext_inf_enable;
 wire [7:0] matmul_num_pulses;
+wire matmul_d2a_unsigned_trigger;
 // wire neuron_num_pulses_matmul;
 
-assign matmul_unsigned_trigger = ep45wire[7];
+assign matmul_unsigned_trigger = ep45wire[7] | matmul_d2a_unsigned_trigger;
 assign ep28wire[4] = matmul_unsigned_idle;
 assign matmul_unsigned_cds = ep0Ewire[0];
 // assign neuron_num_pulses_matmul = ep0Ewire[1];
@@ -859,6 +868,19 @@ matmul_unsigned_helper matmul_unsigned(
 	.turn_off_inference(matmul_inference_mode_off),
 	.ext_inference_enable(matmul_ext_inf_enable),
 	.num_pulses(matmul_num_pulses)
+	);
+
+
+matmul_dac2adc matmul_d2a(
+	.clk(neurram_clk),
+	.rst(neurram_rst),
+	.trigger(ep45wire[8]),
+	.iteration(ep0Ewire[17:10]),
+	.idle(ep28wire[9]),
+	.matmul_unsigned_idle(matmul_unsigned_idle),
+	.nmlo_idle(ml_read_idle),
+	.matmul_unsigned_trigger(matmul_d2a_unsigned_trigger),
+	.nmlo_trigger(matmul_d2a_nmlo_trigger)
 	);
 
 

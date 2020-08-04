@@ -34,7 +34,7 @@ module neurram_spi_control #(parameter spi_length = 256)
 	input wire [1:0] shift_in,
 
 	input wire record_spi,
-	output wire [spi_length*3-1:0] spi_from_neurram
+	output wire [spi_length*3/2-1:0] spi_from_neurram
 	);
 
 wire in_fifo_empty, in_fifo_valid;
@@ -93,7 +93,7 @@ reg [3:0] pipe_in_counter, next_pipe_in_counter;
 reg [3:0] pipe_out_counter, next_pipe_out_counter;
 reg [spi_length-1:0] shift_pip2spi[1:0], next_shift_pip2spi[1:0];
 reg [spi_length-1:0] shift_spi2pip[1:0], next_shift_spi2pip[1:0];
-reg [spi_length*5/2-1:0] from_spi2pip, next_from_spi2pip;
+reg [spi_length*5/4-1:0] from_spi2pip, next_from_spi2pip;
 wire [31:0] spi2pip_options [15:0];
 reg next_spi_idle;
 
@@ -109,8 +109,8 @@ end
 
 assign shift_out[0] = shift_pip2spi[0][0];
 assign shift_out[1] = shift_pip2spi[1][0];
-assign spi_from_neurram[spi_length*3-1 -: spi_length/2] = shift_spi2pip[0][spi_length/2-1 : 0];
-assign spi_from_neurram[0 +: 5*spi_length/2] = from_spi2pip;
+assign spi_from_neurram[spi_length*3/2-1 -: spi_length/4] = shift_spi2pip[0][spi_length/4-1 : 0];
+assign spi_from_neurram[0 +: 5*spi_length/4] = from_spi2pip;
 
 parameter [2:0] STATE_IDLE = 3'b000;
 parameter [2:0] STATE_PIPE_IN = 3'b001;
@@ -221,9 +221,9 @@ always @(*) begin
 			next_shift_spi2pip[0][spi_length-2:0] = shift_spi2pip[0][spi_length-1:1];
 			next_shift_spi2pip[1][spi_length-1] = shift_in[1];
 			next_shift_spi2pip[1][spi_length-2:0] = shift_spi2pip[1][spi_length-1:1];
-			if (record_spi && (clk_counter[8:7] == 2'b10)) begin
-				next_from_spi2pip[spi_length*5/2-1] = shift_spi2pip[0][0];
-				next_from_spi2pip[spi_length*5/2-2 : 0] = from_spi2pip[spi_length*5/2-1 : 1];
+			if (record_spi && (clk_counter[8:6] == 3'b100)) begin
+				next_from_spi2pip[spi_length*5/4-1] = shift_spi2pip[0][0];
+				next_from_spi2pip[spi_length*5/4-2 : 0] = from_spi2pip[spi_length*5/4-1 : 1];
 			end else next_from_spi2pip = from_spi2pip;
 			next_state = STATE_SHIFT2;
 		end

@@ -6,8 +6,8 @@
 //
 //
 //------------------------------------------------------------------------
-(* fsm_style = "bram" *)
-module neuron_multi_level_output #(parameter spi_length = 768)
+// (* fsm_style = "bram" *)
+module neuron_multi_level_output #(parameter spi_length = 384)
 	(
 	input wire clk,
 	input wire ok_clk,
@@ -16,6 +16,7 @@ module neuron_multi_level_output #(parameter spi_length = 768)
 	// host interface
 	input wire output_trigger,
 	input wire y_addr_trigger,
+	input wire [2:0] num_core,
 	output reg idle,
 
 	input wire [31:0] pipe_in,
@@ -31,7 +32,6 @@ module neuron_multi_level_output #(parameter spi_length = 768)
 	input wire neuron_idle,
 	input wire spi_valid,
 	input wire [spi_length-1:0] spi_input,
-	output reg [1:0] reg_config,
 	output reg spi_read_trigger,
 	output reg neuron_reset_trigger
 	);
@@ -88,21 +88,21 @@ FIFO256x32_32x256 FIFO_pipe_out(
 
 reg [3:0] state, next_state;
 reg [3:0] clk_counter, next_clk_counter;
-reg [4:0] pip_counter, next_pip_counter;
+reg [3:0] pip_counter, next_pip_counter;
 reg [spi_length-1:0] init_value, next_init_value;
 reg [spi_length-1:0] y_addr, next_y_addr;
 reg [spi_length-1:0] fnd_idx, next_fnd_idx;
 reg [spi_length-1:0] step_found, next_step_found;
 reg [6:0] iter_number, next_iter_number;
 reg [7*spi_length-1:0] num_step, next_num_step;
-wire [255:0] out_fifo_din_options [23:0];
+wire [255:0] out_fifo_din_options [11:0];
 
 genvar k, i, j;
 for (k=0; k<spi_length*8/256; k=k+1) begin: nmlo_outer
 	for (i=0; i<8; i=i+1) begin: nmlo_middle
 		for (j=0; j<4; j=j+1) begin: nmlo_inner
-			assign out_fifo_din_options[k][(7-i)*32 + j*8 +: 7] = num_step[(k*32 + i*4 + j)*7 +: 7];
-			assign out_fifo_din_options[k][(7-i)*32 + j*8 + 7] = init_value[k*32 + i*4 + j];
+			assign out_fifo_din_options[(5-k/2)*2 + k%2][(7-i)*32 + j*8 +: 7] = num_step[(k*32 + i*4 + j)*7 +: 7];
+			assign out_fifo_din_options[(5-k/2)*2 + k%2][(7-i)*32 + j*8 + 7] = init_value[k*32 + i*4 + j];
 		end
 	end
 end
@@ -125,7 +125,6 @@ always @(posedge clk) begin
 	if (rst) begin
 		state <= STATE_IDLE;
 		idle <= 0;
-		reg_config <= 2'b01;
 		spi_read_trigger <= 0;
 		neuron_reset_trigger <= 0;
 		in_fifo_rd_en <= 0;
@@ -153,7 +152,6 @@ always @(posedge clk) begin
 		case (state)
 			STATE_IDLE: begin
 				idle <= 1;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -161,7 +159,6 @@ always @(posedge clk) begin
 			end
 			STATE_PIPE_IN: begin
 				idle <= 0;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 1;
@@ -169,7 +166,6 @@ always @(posedge clk) begin
 			end
 			STATE_NEURON_TRIG: begin
 				idle <= 0;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 1;
 				in_fifo_rd_en <= 0;
@@ -177,7 +173,6 @@ always @(posedge clk) begin
 			end
 			STATE_NEURON_WAIT: begin
 				idle <= 0;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -185,7 +180,6 @@ always @(posedge clk) begin
 			end
 			STATE_SPI_TRIG: begin
 				idle <= 0;
-				reg_config <= 2'b01;
 				spi_read_trigger <= 1;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -193,7 +187,6 @@ always @(posedge clk) begin
 			end
 			STATE_SPI_WAIT: begin
 				idle <= 0;
-				reg_config <= 2'b01;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -201,7 +194,6 @@ always @(posedge clk) begin
 			end
 			STATE_UPDATE_FND_IDX: begin
 				idle <= 0;
-				reg_config <= 2'b01;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -209,7 +201,6 @@ always @(posedge clk) begin
 			end
 			STATE_UPDATE_NUM_STEP: begin
 				idle <= 0;
-				reg_config <= 2'b01;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -217,7 +208,6 @@ always @(posedge clk) begin
 			end
 			STATE_CHECK_FOUND: begin
 				idle <= 0;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -225,7 +215,6 @@ always @(posedge clk) begin
 			end
 			STATE_PIPE_OUT: begin
 				idle <= 0;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -233,7 +222,6 @@ always @(posedge clk) begin
 			end
 			default: begin
 				idle <= 0;
-				reg_config <= 2'b00;
 				spi_read_trigger <= 0;
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
@@ -380,7 +368,7 @@ always @(*) begin
 			next_out_fifo_din = 0;
 			next_num_step = num_step;
 
-			if ((& step_found) || (iter_number == 200)) next_state = STATE_PIPE_OUT;
+			if ((& step_found) || (iter_number == 100)) next_state = STATE_PIPE_OUT;
 			else next_state = STATE_NEURON_TRIG;
 		end
 		STATE_PIPE_OUT: begin
@@ -394,7 +382,7 @@ always @(*) begin
 			next_num_step = num_step;
 			next_out_fifo_din = out_fifo_din_options[pip_counter];
 
-			if (pip_counter == spi_length*8/256-1) begin 
+			if (pip_counter == 2*num_core-1) begin 
 				next_state = STATE_IDLE;
 			end else begin
 				next_state = STATE_PIPE_OUT;

@@ -9,3 +9,7 @@ ok.py
 # Jupyter Notebooks for testing
 *.ipynb
 .ipynb_checkpoints/
+
+# Numpy saved files
+*.npy
+*.npz
