@@ -33,7 +33,10 @@ module neuron_multi_level_output #(parameter spi_length = 384)
 	input wire spi_valid,
 	input wire [spi_length-1:0] spi_input,
 	output reg spi_read_trigger,
-	output reg neuron_reset_trigger
+	output reg neuron_reset_trigger,
+	output reg turn_off_inference,
+	output reg ext_inference_enable,
+	output reg reg_reset
 	);
 
 
@@ -110,14 +113,20 @@ end
 
 parameter [3:0] STATE_IDLE = 4'd0;
 parameter [3:0] STATE_PIPE_IN = 4'd1;
-parameter [3:0] STATE_NEURON_TRIG = 4'd2;
-parameter [3:0] STATE_NEURON_WAIT = 4'd3;
-parameter [3:0] STATE_SPI_TRIG = 4'd4;
-parameter [3:0] STATE_SPI_WAIT = 4'd5;
-parameter [3:0] STATE_UPDATE_FND_IDX = 4'd6;
-parameter [3:0] STATE_UPDATE_NUM_STEP = 4'd7;
-parameter [3:0] STATE_CHECK_FOUND = 4'd8;
-parameter [3:0] STATE_PIPE_OUT = 4'd9;
+parameter [3:0] STATE_EXT_INF_ON_0 = 4'd2;
+parameter [3:0] STATE_INF_MODE_OFF = 4'd3;
+parameter [3:0] STATE_EXT_INF_OFF_0 = 4'd4;
+parameter [3:0] STATE_NEURON_TRIG = 4'd5;
+parameter [3:0] STATE_NEURON_WAIT = 4'd6;
+parameter [3:0] STATE_SPI_TRIG = 4'd7;
+parameter [3:0] STATE_SPI_WAIT = 4'd8;
+parameter [3:0] STATE_UPDATE_FND_IDX = 4'd9;
+parameter [3:0] STATE_UPDATE_NUM_STEP = 4'd10;
+parameter [3:0] STATE_CHECK_FOUND = 4'd11;
+parameter [3:0] STATE_PIPE_OUT = 4'd12;
+parameter [3:0] STATE_EXT_INF_ON_1 = 4'd13;
+parameter [3:0] STATE_INF_MODE_ON = 4'd14;
+parameter [3:0] STATE_EXT_INF_OFF_1 = 4'd15;
 
 
 
@@ -129,6 +138,9 @@ always @(posedge clk) begin
 		neuron_reset_trigger <= 0;
 		in_fifo_rd_en <= 0;
 		out_fifo_wr_en <= 0;
+		turn_off_inference <= 0;
+		ext_inference_enable <= 0;
+		reg_reset <= 0;
 		clk_counter <= 0;
 		pip_counter <= 0;
 		init_value <= 0;
@@ -156,6 +168,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 0;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_PIPE_IN: begin
 				idle <= 0;
@@ -163,6 +178,39 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 1;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 0;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
+			end
+			STATE_EXT_INF_ON_0: begin
+				idle <= 0;
+				spi_read_trigger <= 0;
+				neuron_reset_trigger <= 0;
+				in_fifo_rd_en <= 0;
+				out_fifo_wr_en <= 0;
+				turn_off_inference <= 0;
+				ext_inference_enable <= 1;
+				reg_reset <= 0;
+			end
+			STATE_INF_MODE_OFF: begin
+				idle <= 0;
+				spi_read_trigger <= 0;
+				neuron_reset_trigger <= 0;
+				in_fifo_rd_en <= 0;
+				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 1;
+				reg_reset <= 0;
+			end
+			STATE_EXT_INF_OFF_0: begin
+				idle <= 0;
+				spi_read_trigger <= 0;
+				neuron_reset_trigger <= 0;
+				in_fifo_rd_en <= 0;
+				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_NEURON_TRIG: begin
 				idle <= 0;
@@ -170,6 +218,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 1;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_NEURON_WAIT: begin
 				idle <= 0;
@@ -177,6 +228,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_SPI_TRIG: begin
 				idle <= 0;
@@ -184,6 +238,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_SPI_WAIT: begin
 				idle <= 0;
@@ -191,6 +248,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_UPDATE_FND_IDX: begin
 				idle <= 0;
@@ -198,6 +258,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 1;
 			end
 			STATE_UPDATE_NUM_STEP: begin
 				idle <= 0;
@@ -205,6 +268,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_CHECK_FOUND: begin
 				idle <= 0;
@@ -212,6 +278,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			STATE_PIPE_OUT: begin
 				idle <= 0;
@@ -219,6 +288,39 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 1;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
+			end
+			STATE_EXT_INF_ON_1: begin
+				idle <= 0;
+				spi_read_trigger <= 0;
+				neuron_reset_trigger <= 0;
+				in_fifo_rd_en <= 0;
+				out_fifo_wr_en <= 0;
+				turn_off_inference <= 1;
+				ext_inference_enable <= 1;
+				reg_reset <= 0;
+			end
+			STATE_INF_MODE_ON: begin
+				idle <= 0;
+				spi_read_trigger <= 0;
+				neuron_reset_trigger <= 0;
+				in_fifo_rd_en <= 0;
+				out_fifo_wr_en <= 0;
+				turn_off_inference <= 0;
+				ext_inference_enable <= 1;
+				reg_reset <= 0;
+			end
+			STATE_EXT_INF_OFF_1: begin
+				idle <= 0;
+				spi_read_trigger <= 0;
+				neuron_reset_trigger <= 0;
+				in_fifo_rd_en <= 0;
+				out_fifo_wr_en <= 0;
+				turn_off_inference <= 0;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 			default: begin
 				idle <= 0;
@@ -226,6 +328,9 @@ always @(posedge clk) begin
 				neuron_reset_trigger <= 0;
 				in_fifo_rd_en <= 0;
 				out_fifo_wr_en <= 0;
+				turn_off_inference <= 0;
+				ext_inference_enable <= 0;
+				reg_reset <= 0;
 			end
 		endcase
 	end
@@ -246,7 +351,7 @@ always @(*) begin
 			next_num_step = num_step;
 
 			if (y_addr_trigger) next_state = STATE_PIPE_IN;
-			else if (output_trigger) next_state = STATE_NEURON_TRIG;
+			else if (output_trigger) next_state = STATE_EXT_INF_ON_0;
 			else next_state = STATE_IDLE;
 		end
 		STATE_PIPE_IN: begin
@@ -271,6 +376,45 @@ always @(*) begin
 				next_state = STATE_PIPE_IN;
 				next_pip_counter = pip_counter;
 			end
+		end
+		STATE_EXT_INF_ON_0: begin
+			next_clk_counter = 0;
+			next_pip_counter = 0;
+			next_init_value = init_value;
+			next_y_addr = y_addr;
+			next_fnd_idx = fnd_idx;
+			next_step_found = step_found;
+			next_iter_number = iter_number;
+			next_out_fifo_din = 0;
+			next_num_step = num_step;
+
+			next_state = STATE_INF_MODE_OFF;
+		end
+		STATE_INF_MODE_OFF: begin
+			next_clk_counter = 0;
+			next_pip_counter = 0;
+			next_init_value = init_value;
+			next_y_addr = y_addr;
+			next_fnd_idx = fnd_idx;
+			next_step_found = step_found;
+			next_iter_number = iter_number;
+			next_out_fifo_din = 0;
+			next_num_step = num_step;
+
+			next_state = STATE_EXT_INF_OFF_0;
+		end
+		STATE_EXT_INF_OFF_0: begin
+			next_clk_counter = 0;
+			next_pip_counter = 0;
+			next_init_value = init_value;
+			next_y_addr = y_addr;
+			next_fnd_idx = fnd_idx;
+			next_step_found = step_found;
+			next_iter_number = iter_number;
+			next_out_fifo_din = 0;
+			next_num_step = num_step;
+
+			next_state = STATE_NEURON_TRIG;
 		end
 		STATE_NEURON_TRIG: begin
 			next_clk_counter = clk_counter + 1;
@@ -383,10 +527,49 @@ always @(*) begin
 			next_out_fifo_din = out_fifo_din_options[pip_counter];
 
 			if (pip_counter == 2*num_core-1) begin 
-				next_state = STATE_IDLE;
+				next_state = STATE_EXT_INF_ON_1;
 			end else begin
 				next_state = STATE_PIPE_OUT;
 			end
+		end
+		STATE_EXT_INF_ON_1: begin
+			next_clk_counter = 0;
+			next_pip_counter = 0;
+			next_init_value = init_value;
+			next_y_addr = y_addr;
+			next_fnd_idx = fnd_idx;
+			next_step_found = step_found;
+			next_iter_number = iter_number;
+			next_out_fifo_din = 0;
+			next_num_step = num_step;
+
+			next_state = STATE_INF_MODE_ON;
+		end
+		STATE_INF_MODE_ON: begin
+			next_clk_counter = 0;
+			next_pip_counter = 0;
+			next_init_value = init_value;
+			next_y_addr = y_addr;
+			next_fnd_idx = fnd_idx;
+			next_step_found = step_found;
+			next_iter_number = iter_number;
+			next_out_fifo_din = 0;
+			next_num_step = num_step;
+
+			next_state = STATE_EXT_INF_OFF_1;
+		end
+		STATE_EXT_INF_OFF_1: begin
+			next_clk_counter = 0;
+			next_pip_counter = 0;
+			next_init_value = init_value;
+			next_y_addr = y_addr;
+			next_fnd_idx = fnd_idx;
+			next_step_found = step_found;
+			next_iter_number = iter_number;
+			next_out_fifo_din = 0;
+			next_num_step = num_step;
+
+			next_state = STATE_IDLE;
 		end
 		default: begin
 			next_clk_counter = 0;

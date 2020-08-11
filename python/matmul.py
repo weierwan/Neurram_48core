@@ -127,17 +127,18 @@ def _translate_outputs(outputs, y_addr, output_dim=256, batch_size=None):
     return out_list
 
 
-def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_addr=None, ota_time=63, num_bits=None, iteration=1):
+def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_addr=None, ota_time=63, num_bits=None, reset_reg=True, iteration=1):
     dev.SetWireInValue(0x06, 0b01100000) # Enable neuron OTA and reg_controlled_wl
-    dev.SetWireInValue(0x05, 0b1 | fwd << 5) # Set inference direction
     dev.SetWireInValue(0x09, run_all | partial_reset << 1 | 0b11 << 2 | (ota_time & 0xff) << 4 | 0b01 << 12 | (num_pulses << 14))
     dev.SetWireInValue(0x10, 1 << 4)
     if partial_reset:
         _setup_partial_reset_hw(dev, col_addr)
     if num_bits is not None:
-        dev.SetWireInValue(0x0E, (iteration & 0xff) << 10 | (num_pulses & 0b11111) << 5 | ((num_bits-1) & 0b111) << 2 | 0b11)
+        dev.SetWireInValue(0x0E, (iteration & 0xff) << 10 | (num_pulses & 0b11111) << 5 | ((num_bits-1) & 0b111) << 2 | reset_reg << 1 | 0b1)
     dev.UpdateWireIns()
-
+    dev.SetWireInValue(0x05, 0b1 | fwd << 5) # Set inference direction
+    dev.UpdateWireIns()
+    
     
 def _setup_partial_reset_hw(dev, col_addr=None):
     if col_addr is None:
@@ -158,7 +159,7 @@ def _trigger_neuron(dev, trigger):
             break
 
 
-def _disable_inference(dev, disable_neuron=False):
+def disable_inference(dev, disable_neuron=False):
     dev.SetWireInValue(0x05, 0b000000) # Disable inference mode
     if disable_neuron:
         dev.SetWireInValue(0x06, 0b00100000) # Disable neurons
@@ -191,7 +192,7 @@ def matmul_bipolar(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_
     _setup_inference(dev, fwd, num_pulses, run_all=True)
 
     _trigger_neuron(dev, 0)
-    # _disable_inference(dev)
+    # disable_inference(dev)
     
     # Read register
     if type(x) is np.ndarray and len(x.shape) == 1:
@@ -205,7 +206,7 @@ def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=
     send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_01, col_addr=col_addr, trigger=False)
     _setup_inference(dev, fwd, num_pulses, run_all=False, num_bits=1)
     _matmul_unsigned_helper_hw(dev, readout=True)
-    # _disable_inference(dev)
+    # disable_inference(dev)
     
     # Read register
     if type(x) is np.ndarray and len(x.shape) == 1:
@@ -313,7 +314,7 @@ def matmul_bipolar_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, nu
     _trigger_neuron(dev, 1)
     output = _matmul_partial_reset_helper_hw(dev, y_addr, row_addr=row_addr, col_addr=col_addr, write_y_addr=prep)
         
-    # _disable_inference(dev)
+    # disable_inference(dev)
     return output
 
 
@@ -331,14 +332,14 @@ def matmul_01_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pul
     return _read_num_step(dev, y_addr, row_addr=row_addr, col_addr=col_addr, batch_size=batch_size)
 
 
-def matmul_unsigned(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, col_addr, pulse_multiplier=1, setup=True):
+def matmul_unsigned(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, col_addr, pulse_multiplier=1, prep=True):
     iteration = 1
     batch_size = None
     if type(x) is np.ndarray and len(x.shape) == 2:
         iteration = x.shape[0]
         batch_size = x.shape[0]
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_unsigned, col_addr=col_addr, trigger=False, prep=setup, input_num_bits=input_num_bits)
-    if setup:
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_unsigned, col_addr=col_addr, trigger=False, prep=prep, input_num_bits=input_num_bits)
+    if prep:
         _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits, iteration=iteration)
         _write_y_addr(dev, y_addr, row_addr=row_addr, col_addr=col_addr)
     _matmul_dac2adc_helper(dev)

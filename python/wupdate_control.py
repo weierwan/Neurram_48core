@@ -10,6 +10,10 @@ import dac_control as dac
 SYS_CLK_PERIOD = 10e-9
 
 def write_reg(dev, row, col, core_row, core_col, enable_core=False):
+    row = int(row)
+    col = int(col)
+    core_row = int(core_row)
+    core_col = int(core_col)
     if enable_core:
         spi.enable_single_core(dev, core_row, core_col)
     spi.reset(dev)
@@ -59,9 +63,9 @@ def wupdate_setup(dev, vset_bl, vset_wl, vreset_sl, pulse_width, vreset_wl=5.0, 
     
 def apply_set_pulse(dev, vset_bl, vset_wl, tset, prep=True):
     if prep:
-        dac.dac_program_single_daisy(dev, 3, 0, 1.0)
+        # dac.dac_program_single_daisy(dev, 3, 0, 1.0)
         dac.dac_program_single_daisy(dev, 3, 0, vset_bl)
-        dac.dac_program_single_daisy(dev, 3, 1, 1.0)
+        # dac.dac_program_single_daisy(dev, 3, 1, 1.0)
         dac.dac_program_single_daisy(dev, 3, 1, vset_wl)
         dev.SetWireInValue(0x07, int(tset/SYS_CLK_PERIOD) & 0xffffffff)
         dev.UpdateWireIns()
@@ -80,9 +84,9 @@ def apply_set_pulse(dev, vset_bl, vset_wl, tset, prep=True):
     
 def apply_reset_pulse(dev, vreset_sl, treset, vreset_wl=5.0, prep=True):
     if prep:
-        dac.dac_program_single_daisy(dev, 3, 2, 1.0)
+        # dac.dac_program_single_daisy(dev, 3, 2, 1.0)
         dac.dac_program_single_daisy(dev, 3, 2, vreset_sl)
-        dac.dac_program_single_daisy(dev, 3, 3, 1.0)
+        # dac.dac_program_single_daisy(dev, 3, 3, 1.0)
         dac.dac_program_single_daisy(dev, 3, 3, vreset_wl)
         dev.SetWireInValue(0x07, int(treset/SYS_CLK_PERIOD) & 0xffffffff)
         dev.UpdateWireIns()
@@ -201,8 +205,8 @@ def program_increment(dev, row, col, core_row, core_col,
 
     while True:
         v_reset = vreset_start
-        max_pulse_count = 0
-        while read < r_low and max_pulse_count < max_pulse_limit:
+        max_pulse_count_reset = 0
+        while read < r_low and max_pulse_count_reset < max_pulse_limit:
             apply_reset_pulse(dev, v_reset, pulse_width, vreset_wl=vreset_wl)
             last_pulse = -v_reset
             pulse_count += 1
@@ -214,12 +218,12 @@ def program_increment(dev, row, col, core_row, core_col,
                 pulses.append(-v_reset)
                 readings.append(read)
             if v_reset >= vreset_end:
-                max_pulse_count += 1
+                max_pulse_count_reset += 1
             elif incremental:
                 v_reset += 0.1
         v_set = vset_start # v_set_wl = VSETWL
-        max_pulse_count = 0
-        while read > r_high and max_pulse_count < max_pulse_limit: #v_set_wl <= VSETWL_LIMIT:
+        max_pulse_count_set = 0
+        while read > r_high and max_pulse_count_set < max_pulse_limit: #v_set_wl <= VSETWL_LIMIT:
             apply_set_pulse(dev, v_set, vset_wl, pulse_width) #VSET, v_set_wl, 1e-7)
             last_pulse = v_set
             pulse_count += 1
@@ -231,7 +235,7 @@ def program_increment(dev, row, col, core_row, core_col,
                 pulses.append(v_set)
                 readings.append(read)
             if v_set >= vset_end:
-                max_pulse_count += 1
+                max_pulse_count_set += 1
             elif incremental:
                 v_set += 0.1 # v_set_wl += 0.1
         iter_count += 1
@@ -243,7 +247,7 @@ def program_increment(dev, row, col, core_row, core_col,
                     if verbose > 0:
                         print('RRAM is programmed within the range.')
                     return (True, read, pulse_count, pulses, readings)
-        if iter_count > iteration_limit or max_pulse_count >= max_pulse_limit:
+        if iter_count > iteration_limit or max_pulse_count_reset >= max_pulse_limit or max_pulse_count_set >= max_pulse_limit:
             if verbose > 0:
                 print('Programming exceeds maximum iteration.')
             return (False, read, pulse_count, pulses, readings)
@@ -353,7 +357,7 @@ def conductance_remap_reset(g_current, g_max):
     return g_remap
 
 
-def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoch, g_max=np.inf, end_voltage=3.3, vread=1.0, vref=0.9, iteration_limit=10,
+def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoch, g_max=np.inf, vset_wl=2.5, end_voltage=3.3, vread=1.0, vref=0.9, iteration_limit=20,
                   pulse_width=1e-6, record_pulse=False, verbose=1):
     M = len(rows)
     N = len(cols)
@@ -361,29 +365,27 @@ def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoc
     final_readings = np.zeros((M, N))
     num_pulses = np.zeros((M, N))
     pulses = []
-    g_min_time = 0
+    start = time.time()
 
     for epoch in range(num_epoch):
         for ri, r in enumerate(rows):
             for ci, c in enumerate(cols):
                 if G[ri,ci] < g_min:
-                    start = time.time()
                     program_sucess[ri,ci], final_readings[ri,ci], num_pulse, pulse_train, _ = program_increment(
                         dev, row=r, col=c, core_row=core_row, core_col=core_col,
                         r_low=1/g_min, r_high=np.inf,
-                        vset_start=1.2, vset_end=end_voltage, vset_wl=3.0,
+                        vset_start=1.2, vset_end=end_voltage, vset_wl=vset_wl,
                         vreset_start=2.5, vreset_end=end_voltage,
-                        pulse_width=pulse_width, iteration_limit=3, max_pulse_limit=30, vread=vread, vref=vref,
+                        pulse_width=pulse_width, iteration_limit=1, max_pulse_limit=30, vread=vread, vref=vref,
                         read_cycles=3, ignore_cycles=1,
                         verbose=verbose, record_history=record_pulse)
-                    g_min_time += time.time() - start
                 elif G[ri,ci] > g_max:
                     program_sucess[ri,ci], final_readings[ri,ci], num_pulse, pulse_train, _ = program_increment(
                         dev, row=r, col=c, core_row=core_row, core_col=core_col,
                         r_low=1/(G[ri,ci]+g_tol), r_high=1/np.minimum(g_max, (G[ri,ci]-g_tol)),
-                        vset_start=2.0, vset_end=end_voltage, vset_wl=3.0,
+                        vset_start=2.0, vset_end=end_voltage, vset_wl=vset_wl,
                         vreset_start=1.5, vreset_end=end_voltage,
-                        pulse_width=pulse_width, iteration_limit=3, max_pulse_limit=30, vread=vread, vref=vref,
+                        pulse_width=pulse_width, iteration_limit=1, max_pulse_limit=30, vread=vread, vref=vref,
                         verbose=verbose, record_history=record_pulse)
                 else:
                     g_lower = G[ri,ci]-g_tol
@@ -394,9 +396,9 @@ def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoc
                     program_sucess[ri,ci], final_readings[ri,ci], num_pulse, pulse_train, _ = program_increment(
                         dev, row=r, col=c, core_row=core_row, core_col=core_col,
                         r_low=1/(G[ri,ci]+g_tol), r_high=r_higher,
-                        vset_start=1.2, vset_end=end_voltage, vset_wl=3.0,
+                        vset_start=1.2, vset_end=end_voltage, vset_wl=vset_wl,
                         vreset_start=1.2, vreset_end=end_voltage,
-                        pulse_width=pulse_width, iteration_limit=iteration_limit, max_pulse_limit=20, vread=vread, vref=vref,
+                        pulse_width=pulse_width, iteration_limit=iteration_limit, max_pulse_limit=30, vread=vread, vref=vref,
                         verbose=verbose, record_history=record_pulse)
                     
                 num_pulses[ri,ci] += num_pulse
@@ -405,7 +407,8 @@ def program_array(dev, rows, cols, core_row, core_col, G, g_min, g_tol, num_epoc
                 if verbose > 0:
                     print('Finished programming %d row %d col' % (r, c))
         print('Finished programming epoch %d.' % epoch)
-    print(g_min_time)
+    end = time.time()
+    print('Time elapsed: %fs' % (end - start))
     return (program_sucess, 1/final_readings, num_pulses, pulses)
 
 

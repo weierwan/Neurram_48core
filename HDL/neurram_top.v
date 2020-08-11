@@ -344,8 +344,8 @@ auto_ranging at_rg(
 
 // Neurram interface
 assign addr_local = ep04wire[7:0];
-assign clear_horz_b = ~ep03wire[0];
-assign clear_vert_b = ~ep03wire[1];
+assign clear_horz_b = ~(ep03wire[0] | matmul_reg_reset | nmlo_reg_reset);
+assign clear_vert_b = ~(ep03wire[1] | matmul_reg_reset | nmlo_reg_reset);
 // assign dec_enable_horz = ep03wire[2];
 // assign dec_enable_vert = ep03wire[3];
 assign enable_ota = ep06wire[6];
@@ -356,8 +356,8 @@ assign ext_1n_sl_sel = ep08wire[5];
 assign ext_3n = ((ep05wire[0] & ~neuron_partial_reset) | (ep05wire[1] & ~neuron_partial_reset) | lfsr_mode | register_mode) & (~ep08wire[0]); //neuron_write_out | lfsr_neuron_on;
 assign ext_3n_bl_sel = ep08wire[1];
 assign ext_3n_sl_sel = ep08wire[2];
-assign ext_inference_enable_bl = ep08wire[8] | inference_mode | ifat_mode | neuron_ext_inf_on | lfsr_ext_inf_on | matmul_ext_inf_enable;
-assign ext_inference_enable_sl = ep08wire[9] | inference_mode | ifat_mode | neuron_ext_inf_on | lfsr_ext_inf_on | matmul_ext_inf_enable;
+assign ext_inference_enable_bl = ep08wire[8] | inference_mode | ifat_mode | neuron_ext_inf_on | lfsr_ext_inf_on | matmul_ext_inf_enable | nmlo_ext_inf_enable;
+assign ext_inference_enable_sl = ep08wire[9] | inference_mode | ifat_mode | neuron_ext_inf_on | lfsr_ext_inf_on | matmul_ext_inf_enable | nmlo_ext_inf_enable;
 assign ext_precharge_bl = ep08wire[6] | (ep05wire[1] & ~neuron_sampling) | (ep05wire[0] & ~forward & ~neuron_precharge_off) | (ep05wire[0] & forward & ~neuron_sampling);
 assign ext_precharge_sl = ep08wire[7] | (ep05wire[1] & ~neuron_sampling) | (ep05wire[0] & forward & ~neuron_precharge_off) | (ep05wire[0] & ~forward & ~neuron_sampling);
 assign ext_turn_on_wl = ep08wire[10];
@@ -367,7 +367,7 @@ assign ext_turn_on_wl = ep08wire[10];
 // assign flip_neuron_vert_2 = ep06wire[4];
 assign forward = ep05wire[5];
 assign ifat_mode = ep05wire[1] & (~(neuron_compare_write | lfsr_inf_mode_off | register_mode | ep05wire[0] | ep05wire[2] | ep05wire[4]));
-assign inference_mode = ep05wire[0] & (~(neuron_compare_write | lfsr_inf_mode_off | register_mode | matmul_inference_mode_off | ep05wire[1] | ep05wire[2] | ep05wire[4]));
+assign inference_mode = ep05wire[0] & (~(neuron_compare_write | lfsr_inf_mode_off | register_mode | matmul_inference_mode_off | nmlo_inf_mode_off | ep05wire[1] | ep05wire[2] | ep05wire[4]));
 // assign latch_en = ep10wire[6];
 assign lfsr_mode = ep05wire[2] | lfsr_mode_on; //& (~(neuron_compare_write | register_mode | ep05wire[0] | ep05wire[1] | ep05wire[4]));
 // assign lfsrhorz_clk = 1'b0;
@@ -775,6 +775,8 @@ wire ml_read_idle;
 wire [7:0] ml_read_idle_i;
 wire [7:0] ml_neuron_trigger;
 wire matmul_d2a_nmlo_trigger;
+wire [7:0] nmlo_inf_mode_off_i, nmlo_ext_inf_enable_i, nmlo_reg_reset_i;
+wire nmlo_inf_mode_off, nmlo_ext_inf_enable, nmlo_reg_reset;
 
 assign ml_read_trigger = ep45wire[5] | matmul_d2a_nmlo_trigger;
 assign ml_y_addr_trigger = ep45wire[6];
@@ -782,6 +784,9 @@ assign ml_read_idle = & ml_read_idle_i;
 assign ep28wire[3] = ml_read_idle;
 assign ml_read_neuron_trigger = | ml_neuron_trigger;
 assign nmlo_shift_multiplier = ep0Fwire[6:3];
+assign nmlo_inf_mode_off = | nmlo_inf_mode_off_i;
+assign nmlo_ext_inf_enable = | nmlo_ext_inf_enable_i;
+assign nmlo_reg_reset = | nmlo_reg_reset_i;
 
 
 generate
@@ -805,7 +810,10 @@ for (i=0; i<8; i=i+1) begin: gen_nmlo
 		.spi_valid(all_spi_idle),
 		.spi_input(spi_from_neurram[i]),
 		.spi_read_trigger(ml_read_spi_trigger[i]),
-		.neuron_reset_trigger(ml_neuron_trigger[i])
+		.neuron_reset_trigger(ml_neuron_trigger[i]),
+		.turn_off_inference(nmlo_inf_mode_off_i[i]),
+		.ext_inference_enable(nmlo_ext_inf_enable_i[i]),
+		.reg_reset(nmlo_reg_reset_i[i])
 	);
 end
 endgenerate
@@ -843,6 +851,7 @@ wire matmul_neuron_sample_trig, matmul_neuron_cds_trig, matmul_spi_trig;
 wire matmul_inference_mode_off, matmul_ext_inf_enable;
 wire [7:0] matmul_num_pulses;
 wire matmul_d2a_unsigned_trigger;
+wire matmul_reg_reset;
 // wire neuron_num_pulses_matmul;
 
 assign matmul_unsigned_trigger = ep45wire[7] | matmul_d2a_unsigned_trigger;
@@ -857,6 +866,7 @@ matmul_unsigned_helper matmul_unsigned(
 	.rst(neurram_rst),
 	.trigger(matmul_unsigned_trigger),
 	.cds(matmul_unsigned_cds),
+	.reset(ep0Ewire[1]),
 	.num_bits(matmul_unsigned_num_bits),
 	.pulse_multiplier(matmul_unsigned_pulse_mult),
 	.idle(matmul_unsigned_idle),
@@ -867,7 +877,8 @@ matmul_unsigned_helper matmul_unsigned(
 	.spi_write_trigger(matmul_spi_trig),
 	.turn_off_inference(matmul_inference_mode_off),
 	.ext_inference_enable(matmul_ext_inf_enable),
-	.num_pulses(matmul_num_pulses)
+	.num_pulses(matmul_num_pulses),
+	.reg_reset(matmul_reg_reset)
 	);
 
 

@@ -1,4 +1,5 @@
 # Directories to ignore
-data/
+results/
 HDL_v1/
 python_v1/
+~$*
