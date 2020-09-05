@@ -33,8 +33,8 @@ wire fifo_full;
 
 
 generate
-	if (FIFO_SIZE == 512) begin: fifo_gen_512
-		FIFO32x512 FIFO_pipe_out(
+	if (FIFO_SIZE == 1024) begin: fifo_gen_1024
+		FIFO32x1024 FIFO_pipe_out(
 			// General input
 			.wr_clk(clk), // input wr_clk
 			.rd_clk(ok_clk), // input rd_clk

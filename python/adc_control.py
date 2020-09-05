@@ -93,8 +93,9 @@ def read_average_resistance(dev, vread, vref, t_shld, t_delta, read_cycles, igno
         return (vread-vref) / currents[ignore_cycles:]
     currents_avg = np.mean(currents[ignore_cycles:])
     if currents_avg == 0:
-        print('All voltage readigns are identical')
-        return
+        print('Two voltage readings are identical')
+        if not current:
+            return np.inf
     # Note that this compute geometric mean since what we care is conductance
     if current:
         return currents_avg

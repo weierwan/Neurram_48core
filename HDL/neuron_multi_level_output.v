@@ -7,7 +7,7 @@
 //
 //------------------------------------------------------------------------
 // (* fsm_style = "bram" *)
-module neuron_multi_level_output #(parameter spi_length = 384)
+module neuron_multi_level_output #(parameter spi_length = 576)
 	(
 	input wire clk,
 	input wire ok_clk,
@@ -68,7 +68,7 @@ wire out_fifo_full;
 reg out_fifo_wr_en;
 reg [255:0] out_fifo_din, next_out_fifo_din;
 
-FIFO256x32_32x256 FIFO_pipe_out(
+FIFO256x64_32x512 FIFO_pipe_out(
 
 	// General input
 	.wr_clk(clk), // input wr_clk
@@ -91,21 +91,21 @@ FIFO256x32_32x256 FIFO_pipe_out(
 
 reg [3:0] state, next_state;
 reg [3:0] clk_counter, next_clk_counter;
-reg [3:0] pip_counter, next_pip_counter;
+reg [4:0] pip_counter, next_pip_counter;
 reg [spi_length-1:0] init_value, next_init_value;
 reg [spi_length-1:0] y_addr, next_y_addr;
 reg [spi_length-1:0] fnd_idx, next_fnd_idx;
 reg [spi_length-1:0] step_found, next_step_found;
 reg [6:0] iter_number, next_iter_number;
 reg [7*spi_length-1:0] num_step, next_num_step;
-wire [255:0] out_fifo_din_options [11:0];
+wire [255:0] out_fifo_din_options [17:0];
 
 genvar k, i, j;
-for (k=0; k<spi_length*8/256; k=k+1) begin: nmlo_outer
-	for (i=0; i<8; i=i+1) begin: nmlo_middle
-		for (j=0; j<4; j=j+1) begin: nmlo_inner
-			assign out_fifo_din_options[(5-k/2)*2 + k%2][(7-i)*32 + j*8 +: 7] = num_step[(k*32 + i*4 + j)*7 +: 7];
-			assign out_fifo_din_options[(5-k/2)*2 + k%2][(7-i)*32 + j*8 + 7] = init_value[k*32 + i*4 + j];
+for (k=0; k<spi_length*8/256; k=k+1) begin: options
+	for (i=0; i<8; i=i+1) begin: words
+		for (j=0; j<4; j=j+1) begin: bytes
+			assign out_fifo_din_options[(5-k/3)*3 + k%3][(7-i)*32 + j*8 +: 7] = num_step[(k*32 + i*4 + j)*7 +: 7];
+			assign out_fifo_din_options[(5-k/3)*3 + k%3][(7-i)*32 + j*8 + 7] = init_value[k*32 + i*4 + j];
 		end
 	end
 end
@@ -526,7 +526,7 @@ always @(*) begin
 			next_num_step = num_step;
 			next_out_fifo_din = out_fifo_din_options[pip_counter];
 
-			if (pip_counter == 2*num_core-1) begin 
+			if (pip_counter == 3*num_core-1) begin 
 				next_state = STATE_EXT_INF_ON_1;
 			end else begin
 				next_state = STATE_PIPE_OUT;

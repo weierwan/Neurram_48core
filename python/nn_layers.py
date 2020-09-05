@@ -6,15 +6,25 @@ import numpy as np
 import matmul
 
 
-def conv_filter_2_matrix(W, b, relux=1):
-    HH, WW, C, F = W.shape
-    W_transform = W.reshape(HH*WW*C, F)
+def conv_filter_2_matrix(W, b, relux=1, distribute_bias=True, num_bias=1):
+    if len(W.shape) == 4:
+        HH, WW, C, F = W.shape
+        W_transform = W.reshape(HH*WW*C, F)
+    else:
+        HH, F = W.shape
+        W_transform = W
     segment = int(np.ceil(W_transform.shape[0] / 100.0))
     seg_length = int(np.ceil(W_transform.shape[0] / segment))
     W_transform_list = []
     for i in range(segment):
-        W_transform_list.append(W_transform[seg_length * i : seg_length * (i+1), :])
-    W_transform_list[segment-1] = np.vstack([W_transform_list[segment-1], b/relux])
+        W_segment = W_transform[seg_length * i : seg_length * (i+1), :]
+        if distribute_bias:
+            b_segment = np.tile(b/relux/segment/num_bias, [num_bias, 1])
+            W_segment = np.vstack([W_segment, b_segment])
+        W_transform_list.append(W_segment)
+    if not distribute_bias:
+        b_segment = np.tile(b/relux/num_bias, [num_bias, 1])
+        W_transform_list[segment-1] = np.vstack([W_transform_list[segment-1], b_segment])
     return W_transform_list
 
 
@@ -63,7 +73,7 @@ def dense_unsigned(dev, x, x_addr, y_addr, core_row, core_col, input_num_bits, s
     
     out = np.zeros([N, F])
     for i in range(N // batch_size):
-        xi = x_pad[i*batch_size : (i+1)*batch_size, :]
+        xi = x[i*batch_size : (i+1)*batch_size, :]
         if segment_index is not None:
             xi = xi[:, segment_index]
         out[i*batch_size : (i+1)*batch_size, :] = matmul.matmul_unsigned(

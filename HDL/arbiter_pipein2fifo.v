@@ -7,7 +7,7 @@
 //
 //------------------------------------------------------------------------
 
-module arbiter_pipein2fifo #(parameter FIFO_SIZE = 1024)(
+module arbiter_pipein2fifo #(parameter FIFO_SIZE = 2048)(
 	input wire clk,
 	input wire ok_clk,
 	input wire rst,
@@ -17,6 +17,7 @@ module arbiter_pipein2fifo #(parameter FIFO_SIZE = 1024)(
 	input wire pipe_in_write,
 	input wire [7:0] core_select,
 	input wire [9:0] num_words,
+	input wire [1:0] padding_words,
 	output reg idle,
 	output wire pipe_in_full,
 
@@ -51,8 +52,8 @@ if (FIFO_SIZE == 64) begin: fifo_gen_64
 		.dout(fifo_dout), // output [31 : 0] dout	
 		.valid(fifo_valid) // output valid
 	);
-end else begin: fifo_gen_1024
-	FIFO32x1024FWFT FIFO_pipe_in(
+end else begin: fifo_gen_2048
+	FIFO32x2048FWFT FIFO_pipe_in(
 		// General input
 		.wr_clk(ok_clk), // input wr_clk
 		.rd_clk(clk), // input rd_clk
@@ -136,6 +137,11 @@ always @(*) begin
 				next_write_counter = write_counter;
 				next_addr_counter = addr_counter + 1;
 				next_state = STATE_CHECK_ADDR;
+			end else if (write_counter >= num_words - padding_words) begin
+				fifo_rd_en = 1;
+				next_write_counter = write_counter + 1;
+				next_addr_counter = addr_counter;
+				next_state = STATE_TRANSFER;
 			end else begin
 				data2fifo[addr_counter*32 +: 32] = fifo_dout;
 				wr_en_2fifo[addr_counter] = fifo_valid;

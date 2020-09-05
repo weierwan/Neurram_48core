@@ -433,6 +433,7 @@ arbiter_pipein2fifo arbiter_pipein2spi(
 	.pipe_in_write(ep80write),
 	.core_select(core_select),
 	.num_words(write_num_words),
+	.padding_words(2'd0),
 	.idle(arb_pipein2spi_idle),
 	.pipe_in_full(spi_pipe_in_full),
 	.data2fifo(data_pipein2spi),
@@ -477,7 +478,7 @@ wire [7:0] state_spi_clk, state_spi_idle;
 wire [1:0] reg_shift_out, reg_shift_in;
 wire [1:0] spi_config;
 wire [3:0] spi_shift_multiplier, spi_pipe_in_steps, spi_pipe_out_steps;
-wire [256*3/2-1:0] spi_from_neurram[7:0];
+wire [96*6-1:0] spi_from_neurram[7:0];
 wire all_spi_idle;
 wire [1:0] spi_clk_random_and_neuron;
 wire record_spi;
@@ -734,7 +735,8 @@ arbiter_pipein2fifo #(.FIFO_SIZE(64)) arbiter_pipein2nmlo (
 	.pipe_in(ep81pipe),
 	.pipe_in_write(ep81write),
 	.core_select(core_select),
-	.num_words(10'd12),
+	.num_words(10'd20),
+	.padding_words(2'd2),
 	.idle(arb_pipein2nmlo_idle),
 	.pipe_in_full(nmlo_pipe_in_full),
 	.data2fifo(data_pipein2nmlo),
@@ -750,10 +752,10 @@ wire [7:0] nmlo_pipeout_num_words;
 
 assign ep28wire[8] = arb_nmlo2pipeout_idle;
 assign ep28wire[13] = nmlo_pipe_out_empty;
-assign nmlo_pipeout_num_words = nmlo_num_core * 16;
+assign nmlo_pipeout_num_words = nmlo_num_core * 24;
 
 
-arbiter_fifo2pipeout #(.FIFO_SIZE(512)) arbiter_nmlo2pipeout(
+arbiter_fifo2pipeout #(.FIFO_SIZE(1024)) arbiter_nmlo2pipeout(
 	.clk(sys_clk),
 	.ok_clk(okClk),
 	.rst(neurram_rst),
