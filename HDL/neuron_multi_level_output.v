@@ -7,7 +7,7 @@
 //
 //------------------------------------------------------------------------
 // (* fsm_style = "bram" *)
-module neuron_multi_level_output #(parameter spi_length = 576)
+module neuron_multi_level_output #(parameter spi_length = 576, total_cores = 6)
 	(
 	input wire clk,
 	input wire ok_clk,
@@ -16,6 +16,7 @@ module neuron_multi_level_output #(parameter spi_length = 576)
 	// host interface
 	input wire output_trigger,
 	input wire y_addr_trigger,
+	input wire single_core,
 	input wire [2:0] num_core,
 	output reg idle,
 
@@ -31,7 +32,8 @@ module neuron_multi_level_output #(parameter spi_length = 576)
 	// Neurram control module interface
 	input wire neuron_idle,
 	input wire spi_valid,
-	input wire [spi_length-1:0] spi_input,
+	input wire [spi_length-1:0] spi_input_row,
+	input wire [spi_length-1:0] spi_input_single_core,
 	output reg spi_read_trigger,
 	output reg neuron_reset_trigger,
 	output reg turn_off_inference,
@@ -89,6 +91,8 @@ FIFO256x64_32x512 FIFO_pipe_out(
 );
 
 
+parameter options_per_core = spi_length / total_cores * 8 / 256;
+
 reg [3:0] state, next_state;
 reg [3:0] clk_counter, next_clk_counter;
 reg [4:0] pip_counter, next_pip_counter;
@@ -98,14 +102,27 @@ reg [spi_length-1:0] fnd_idx, next_fnd_idx;
 reg [spi_length-1:0] step_found, next_step_found;
 reg [6:0] iter_number, next_iter_number;
 reg [7*spi_length-1:0] num_step, next_num_step;
-wire [255:0] out_fifo_din_options [17:0];
+wire [spi_length-1:0] spi_input;
+wire [255:0] out_fifo_din_options [options_per_core*total_cores-1:0];
+wire [255:0] out_fifo_din_single_core [7:0];
+
+assign spi_input = single_core? spi_input_single_core : spi_input_row;
 
 genvar k, i, j;
-for (k=0; k<spi_length*8/256; k=k+1) begin: options
+for (k=0; k<options_per_core*total_cores; k=k+1) begin: options
 	for (i=0; i<8; i=i+1) begin: words
 		for (j=0; j<4; j=j+1) begin: bytes
-			assign out_fifo_din_options[(5-k/3)*3 + k%3][(7-i)*32 + j*8 +: 7] = num_step[(k*32 + i*4 + j)*7 +: 7];
-			assign out_fifo_din_options[(5-k/3)*3 + k%3][(7-i)*32 + j*8 + 7] = init_value[k*32 + i*4 + j];
+			assign out_fifo_din_options[(total_cores-1-k/options_per_core)*options_per_core + k%options_per_core][(7-i)*32 + j*8 +: 7] = num_step[(k*32 + i*4 + j)*7 +: 7];
+			assign out_fifo_din_options[(total_cores-1-k/options_per_core)*options_per_core + k%options_per_core][(7-i)*32 + j*8 + 7] = init_value[k*32 + i*4 + j];
+		end
+	end
+end
+
+for (k=0; k<8; k=k+1) begin: options_sc
+	for (i=0; i<8; i=i+1) begin: words_sc
+		for (j=0; j<4; j=j+1) begin: bytes_sc
+			assign out_fifo_din_single_core[k][(7-i)*32 + j*8 +: 7] = num_step[(spi_length - 256 + k*32 + i*4 + j)*7 +: 7];
+			assign out_fifo_din_single_core[k][(7-i)*32 + j*8 + 7] = init_value[spi_length - 256 + k*32 + i*4 + j];
 		end
 	end
 end
@@ -524,12 +541,21 @@ always @(*) begin
 			next_step_found = step_found;
 			next_iter_number = iter_number;
 			next_num_step = num_step;
-			next_out_fifo_din = out_fifo_din_options[pip_counter];
 
-			if (pip_counter == 3*num_core-1) begin 
-				next_state = STATE_EXT_INF_ON_1;
+			if (single_core) begin
+				next_out_fifo_din = out_fifo_din_single_core[pip_counter];
+				if (pip_counter == 7) begin 
+					next_state = STATE_EXT_INF_ON_1;
+				end else begin
+					next_state = STATE_PIPE_OUT;
+				end
 			end else begin
-				next_state = STATE_PIPE_OUT;
+				next_out_fifo_din = out_fifo_din_options[pip_counter];
+				if (pip_counter == options_per_core*num_core-1) begin 
+					next_state = STATE_EXT_INF_ON_1;
+				end else begin
+					next_state = STATE_PIPE_OUT;
+				end
 			end
 		end
 		STATE_EXT_INF_ON_1: begin

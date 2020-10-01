@@ -34,7 +34,8 @@ module neurram_spi_control #(parameter spi_length = 256)
 	input wire [1:0] shift_in,
 
 	input wire record_spi,
-	output wire [96*6-1:0] spi_from_neurram
+	output wire [96*6-1:0] spi_from_neurram,
+	output wire [spi_length-1: 0] spi_single_core
 	);
 
 wire in_fifo_empty, in_fifo_valid;
@@ -111,6 +112,7 @@ assign shift_out[0] = shift_pip2spi[0][0];
 assign shift_out[1] = shift_pip2spi[1][0];
 assign spi_from_neurram[96*6-1 -: 96] = shift_spi2pip[0][95 : 0];
 assign spi_from_neurram[0 +: 5*96] = from_spi2pip;
+assign spi_single_core = shift_spi2pip[0];
 
 parameter [2:0] STATE_IDLE = 3'b000;
 parameter [2:0] STATE_PIPE_IN = 3'b001;

@@ -145,10 +145,12 @@ def _setup_partial_reset_hw(dev, col_addr=None):
     if col_addr is None:
         shift_multiplier = 11
         num_core = 6
+        single_core = False
     else:
         shift_multiplier = 2 * col_addr + 1
         num_core = 1
-    dev.SetWireInValue(0x0F, (num_core & 0b111) | (shift_multiplier & 0xf) << 3)
+        single_core = True
+    dev.SetWireInValue(0x0F, (num_core & 0b111) | (shift_multiplier & 0xf) << 3 | single_core << 7)
 
 
 def _trigger_neuron(dev, trigger):
@@ -161,7 +163,7 @@ def _trigger_neuron(dev, trigger):
 
 
 def disable_inference(dev, disable_neuron=False):
-    dev.SetWireInValue(0x05, 0b000000) # Disable inference mode
+    dev.SetWireInValue(0x05, 0b100000) # Disable inference mode
     if disable_neuron:
         dev.SetWireInValue(0x06, 0b00100000) # Disable neurons
     dev.UpdateWireIns()
@@ -220,8 +222,9 @@ def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=
 def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
     if type(y_addr) is np.ndarray and len(y_addr.shape) == 1:
         btarray = bytearray(80)
+        start_i = (96*6-256)//8
         for y in y_addr:
-            btarray[5*12 + y//8] = btarray[5*12 + y//8] | (0b1 << (y%8))
+            btarray[start_i + y//8] = btarray[start_i + y//8] | (0b1 << (y%8))
     else:
         assert len(y_addr) == len(row_addr)
         btarray = bytearray(80 * len(y_addr))
@@ -238,11 +241,11 @@ def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
             break
         
 
-def _decode_row_output(dev, num_row, num_col, batch_size):
+def _decode_row_output(dev, num_row, num_col, batch_size, row_length=96):
     reshape = (batch_size is None)
     if reshape:
         batch_size = 1
-    ROW_ARRAY_SIZE = num_col * 96
+    ROW_ARRAY_SIZE = num_col * row_length
     BATCH_ARRAY_SIZE = ROW_ARRAY_SIZE * num_row
     L = BATCH_ARRAY_SIZE * batch_size
     
@@ -264,7 +267,7 @@ def _decode_row_output(dev, num_row, num_col, batch_size):
     output = (num_step - 0.5) * (1.0 - out_init * 2.0)
     
     if reshape:
-        output = output.reshape([num_row, num_col, 96])
+        output = output.reshape([num_row, num_col, row_length])
         output = output[:, ::-1, :]
         output = output.reshape([num_row, ROW_ARRAY_SIZE])
     return output
@@ -272,16 +275,16 @@ def _decode_row_output(dev, num_row, num_col, batch_size):
 
 def _read_num_step(dev, y_addr, row_addr=None, col_addr=None, batch_size=None):
     if type(row_addr) is not list and col_addr is not None:
-        outputs = _decode_row_output(dev, 1, 1, batch_size)
+        outputs = _decode_row_output(dev, 1, 1, batch_size, row_length=256)
         if batch_size is None:
             outputs = outputs.flatten()
         else:
             outputs = outputs.reshape([batch_size, -1])
+        return _translate_outputs(outputs, y_addr, output_dim=256, batch_size=batch_size)
     else:
         num_col = len(y_addr[0])
         outputs = _decode_row_output(dev, len(y_addr), 6, batch_size)[:, :num_col * 96]
-
-    return _translate_outputs(outputs, y_addr, output_dim=96, batch_size=batch_size)
+        return _translate_outputs(outputs, y_addr, output_dim=96, batch_size=batch_size)
     
 
 def _matmul_partial_reset_helper_hw(dev, y_addr, row_addr, col_addr=None, write_y_addr=True, readout=True):

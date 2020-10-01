@@ -478,7 +478,7 @@ wire [7:0] state_spi_clk, state_spi_idle;
 wire [1:0] reg_shift_out, reg_shift_in;
 wire [1:0] spi_config;
 wire [3:0] spi_shift_multiplier, spi_pipe_in_steps, spi_pipe_out_steps;
-wire [96*6-1:0] spi_from_neurram[7:0];
+wire [96*6-1:0] spi_from_neurram[7:0], spi_single_core[7:0];
 wire all_spi_idle;
 wire [1:0] spi_clk_random_and_neuron;
 wire record_spi;
@@ -499,6 +499,11 @@ assign ep28wire[2] = all_spi_idle;
 assign record_spi = ~ml_read_idle;
 assign shift_fwd = ml_read_idle ? ep0Dwire[14] : 1'b0;
 assign nmlo_spi_trigger = | ml_read_spi_trigger;
+
+genvar c;
+for (c=0; c<8; c=c+1) begin: nmlo_spi
+	assign spi_single_core[c][96*6-256-1:0] = 0;
+end
 
 neurram_reg_control neurram_reg(
 	.clk(spi_ctrl_clk),
@@ -548,7 +553,8 @@ for (i=0; i<8; i=i+1) begin: gen_spi
 		.shift_out(shift2chip[i*2 +: 2]),
 		.shift_in(shift2ok[i*2 +: 2]),
 		.record_spi(record_spi),
-		.spi_from_neurram(spi_from_neurram[i])
+		.spi_from_neurram(spi_from_neurram[i]),
+		.spi_single_core(spi_single_core[i][96*6-1 -: 256])
 	);
 end
 endgenerate
@@ -752,7 +758,7 @@ wire [7:0] nmlo_pipeout_num_words;
 
 assign ep28wire[8] = arb_nmlo2pipeout_idle;
 assign ep28wire[13] = nmlo_pipe_out_empty;
-assign nmlo_pipeout_num_words = nmlo_num_core * 24;
+assign nmlo_pipeout_num_words = nmlo_single_core? 64 : (nmlo_num_core * 24);
 
 
 arbiter_fifo2pipeout #(.FIFO_SIZE(1024)) arbiter_nmlo2pipeout(
@@ -779,6 +785,7 @@ wire [7:0] ml_neuron_trigger;
 wire matmul_d2a_nmlo_trigger;
 wire [7:0] nmlo_inf_mode_off_i, nmlo_ext_inf_enable_i, nmlo_reg_reset_i;
 wire nmlo_inf_mode_off, nmlo_ext_inf_enable, nmlo_reg_reset;
+wire nmlo_single_core;
 
 assign ml_read_trigger = ep45wire[5] | matmul_d2a_nmlo_trigger;
 assign ml_y_addr_trigger = ep45wire[6];
@@ -789,6 +796,7 @@ assign nmlo_shift_multiplier = ep0Fwire[6:3];
 assign nmlo_inf_mode_off = | nmlo_inf_mode_off_i;
 assign nmlo_ext_inf_enable = | nmlo_ext_inf_enable_i;
 assign nmlo_reg_reset = | nmlo_reg_reset_i;
+assign nmlo_single_core = ep0Fwire[7];
 
 
 generate
@@ -799,6 +807,7 @@ for (i=0; i<8; i=i+1) begin: gen_nmlo
 		.rst(neurram_rst),
 		.output_trigger(ml_read_trigger & core_select[i]),
 		.y_addr_trigger(ml_y_addr_trigger & core_select[i]),
+		.single_core(nmlo_single_core),
 		.num_core(nmlo_num_core),
 		.idle(ml_read_idle_i[i]),
 		.pipe_in(data_pipein2nmlo[32*i +: 32]),
@@ -810,7 +819,8 @@ for (i=0; i<8; i=i+1) begin: gen_nmlo
 		.out_fifo_valid(valid_nmlo2pipeout[i]),
 		.neuron_idle(neuron_idle),
 		.spi_valid(all_spi_idle),
-		.spi_input(spi_from_neurram[i]),
+		.spi_input_row(spi_from_neurram[i]),
+		.spi_input_single_core(spi_single_core[i]),
 		.spi_read_trigger(ml_read_spi_trigger[i]),
 		.neuron_reset_trigger(ml_neuron_trigger[i]),
 		.turn_off_inference(nmlo_inf_mode_off_i[i]),
