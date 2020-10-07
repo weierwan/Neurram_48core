@@ -67,13 +67,19 @@ def _encode_input(x, x_addr, bias, fwd):
     return np.hstack(x_reg)
 
 
-def _encode_input_01(x, x_addr, bias, fwd):
+def _encode_input_01(x, x_addr, bias, fwd, neg=False):
     if type(x) is np.ndarray:
         x_bipolar = x*2-1
         ones_bipolar = np.ones_like(x)
+        if neg:
+            x_bipolar = -x_bipolar
+            ones_bipolar = -ones_bipolar
     else:
         x_bipolar = [i*2-1 for i in x]
         ones_bipolar = [np.ones_like(i) for i in x]
+        if neg:
+            x_bipolar = [-i for i in x_bipolar]
+            ones_bipolar = [-i for i in ones_bipolar]
     return np.hstack([_encode_input(x_bipolar, x_addr, bias, fwd), _encode_input(ones_bipolar, x_addr, bias, fwd)])
 
 
@@ -87,6 +93,26 @@ def _encode_input_unsigned(x, x_addr, bias, fwd, input_num_bits):
         else:
             x_binary = [(x_i.astype(np.int8) & (0b1 << b)) >> b for x_i in x]
         x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd))
+    return np.hstack(x_binary_list)
+
+
+def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits):
+    if type(x) is np.ndarray:
+        assert (x < 2**(input_num_bits-1)).all(), 'x value must be less than 2**(input_num_bits-1)'
+        assert (x >= -2**(input_num_bits-1)).all(), 'x value must be greater than or equal to -2**(input_num_bits-1)'
+    x_binary_list = []
+    for b in range(input_num_bits-1):
+        if type(x) is np.ndarray:
+            x_binary = (x.astype(np.int8) & (0b1 << b)) >> b
+        else:
+            x_binary = [(x_i.astype(np.int8) & (0b1 << b)) >> b for x_i in x]
+        x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd))
+    # Process the sign bit (2's complement)
+    if type(x) is np.ndarray:
+        x_binary = (x < 0).astype(np.int8)
+    else:
+        x_binary = [(x < 0).astype(np.int8) for x_i in x]
+    x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd, neg=True))
     return np.hstack(x_binary_list)
 
 
@@ -336,18 +362,26 @@ def matmul_01_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pul
     return _read_num_step(dev, y_addr, row_addr=row_addr, col_addr=col_addr, batch_size=batch_size)
 
 
-def matmul_unsigned(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, col_addr, pulse_multiplier=1, prep=True):
+def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, col_addr, pulse_multiplier=1, prep=True):
     iteration = 1
     batch_size = None
     if type(x) is np.ndarray and len(x.shape) == 2:
         iteration = x.shape[0]
         batch_size = x.shape[0]
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_unsigned, col_addr=col_addr, trigger=False, prep=prep, input_num_bits=input_num_bits)
+    if signed:
+        encode_func = _encode_input_signed
+    else:
+        encode_func = _encode_input_unsigned
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=col_addr, trigger=False, prep=prep, input_num_bits=input_num_bits)
     if prep:
         _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits, iteration=iteration)
         _write_y_addr(dev, y_addr, row_addr=row_addr, col_addr=col_addr)
     _matmul_dac2adc_helper(dev)
     return _read_num_step(dev, y_addr, row_addr=row_addr, col_addr=col_addr, batch_size=batch_size)
+
+
+def matmul_unsigned(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, col_addr, pulse_multiplier=1, prep=True):
+    return matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, False, col_addr, pulse_multiplier, prep)
 
 
 def calibrate_voltage(dev, vpos, vneg, rows, cols, core_row, core_col, fwd, num_pulse, tolerance=0.05, increment=0.001, iteration=1000, max_cycle=10, vcomp_offset=0.02, verbose=False):

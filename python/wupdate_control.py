@@ -134,10 +134,13 @@ def activate_wl(dev, set_op=None, v_wl=3.3, pulse_width=1e-6, prep=False):
     dev.UpdateWireIns()
         
     
-def find_vset_wl(dev, row, col, core_row, core_col, vset_bl, vset_wl_start, vset_wl_end, tset, r_target, v_incr=0.1, tread=200, verbose=False):
+def find_vset_wl(dev, row, col, core_row, core_col, vset_bl, vset_wl_start, vset_wl_end, tset, r_target, v_incr=0.1, tread=200, pulse_first=False, verbose=False):
     write_reg(dev, row, col, core_row, core_col)
     # enable_wupdate_mode(dev)
-    res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
+    if pulse_first:
+        res = np.inf
+    else:
+        res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
     if verbose:
         print(res)
     if res > 0 and res <= r_target:
@@ -160,11 +163,13 @@ def find_vset_wl(dev, row, col, core_row, core_col, vset_bl, vset_wl_start, vset
     return (0, 0)
 
 
-def find_vset_bl(dev, row, col, core_row, core_col, vset_wl, vset_bl_start, vset_bl_end, tset, r_target, v_incr=0.1, tread=200, verbose=False):
+def find_vset_bl(dev, row, col, core_row, core_col, vset_wl, vset_bl_start, vset_bl_end, tset, r_target, v_incr=0.1, tread=200, pulse_first=False, verbose=False):
     write_reg(dev, row, col, core_row, core_col)
     # enable_wupdate_mode(dev)
-    
-    res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
+    if pulse_first:
+        res = np.inf
+    else:
+        res = adc.read_average_resistance(dev, 1.0, 0.9, tread/2, tread, 10, 5, dac_setup=False)
     if verbose:
         print(res)
     if res > 0 and res <= r_target:
