@@ -83,6 +83,16 @@ def _encode_input_01(x, x_addr, bias, fwd, neg=False):
     return np.hstack([_encode_input(x_bipolar, x_addr, bias, fwd), _encode_input(ones_bipolar, x_addr, bias, fwd)])
 
 
+def _encode_input_101(x, x_addr, bias, fwd):
+    if type(x) is np.ndarray:
+        x_1 = (x>0) * 2 - 1
+        x_2 = (x>=0) * 2 - 1
+    else:
+        x_1 = [(i>0)*2-1 for i in x]
+        x_2 = [(i>=0)*2-1 for i in x]
+    return np.hstack([_encode_input(x_1, x_addr, bias, fwd), _encode_input(x_2, x_addr, bias, fwd)])
+
+
 def _encode_input_unsigned(x, x_addr, bias, fwd, input_num_bits):
     if type(x) is np.ndarray:
         assert (x < 2**input_num_bits).all(), 'x value must be less than 2**input_num_bits'
@@ -96,7 +106,7 @@ def _encode_input_unsigned(x, x_addr, bias, fwd, input_num_bits):
     return np.hstack(x_binary_list)
 
 
-def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits):
+def _encode_input_2complement(x, x_addr, bias, fwd, input_num_bits):
     if type(x) is np.ndarray:
         assert (x < 2**(input_num_bits-1)).all(), 'x value must be less than 2**(input_num_bits-1)'
         assert (x >= -2**(input_num_bits-1)).all(), 'x value must be greater than or equal to -2**(input_num_bits-1)'
@@ -114,6 +124,21 @@ def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits):
         x_binary = [(x < 0).astype(np.int8) for x_i in x]
     x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd, neg=True))
     return np.hstack(x_binary_list)
+
+
+def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits):
+    if type(x) is np.ndarray:
+        assert (x < 2**(input_num_bits-1)).all(), 'x value must be less than 2**(input_num_bits-1)'
+        assert (x > -2**(input_num_bits-1)).all(), 'x value must be greater than -2**(input_num_bits-1)'
+    x_binary_list = []
+    for b in range(input_num_bits-1):
+        if type(x) is np.ndarray:
+            x_binary = (np.abs(x).astype(np.int8) >> b & 0b1) * np.sign(x)
+        else:
+            x_binary = [(np.abs(x_i).astype(np.int8) >> b & 0b1) * np.sign(x_i) for x_i in x]
+        x_binary_list.append(_encode_input_101(x_binary, x_addr, bias, fwd))
+    return np.hstack(x_binary_list)
+
 
 
 def _encode_multi_row(x, x_addr, bias, fwd, encode_func=_encode_input, **kwargs):
@@ -374,7 +399,7 @@ def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, 
         encode_func = _encode_input_unsigned
     send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=col_addr, trigger=False, prep=prep, input_num_bits=input_num_bits)
     if prep:
-        _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits, iteration=iteration)
+        _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits-1 if signed else input_num_bits, iteration=iteration)
         _write_y_addr(dev, y_addr, row_addr=row_addr, col_addr=col_addr)
     _matmul_dac2adc_helper(dev)
     return _read_num_step(dev, y_addr, row_addr=row_addr, col_addr=col_addr, batch_size=batch_size)

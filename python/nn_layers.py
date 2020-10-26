@@ -48,7 +48,7 @@ def conv_unsigned(dev, x, x_addr, y_addr, core_row, core_col, height, width, inp
     HC = int(1 + (H + pad[0] + pad[1] - height) / stride)
     WC = int(1 + (W + pad[0] + pad[1] - width) / stride)
 
-    out = np.zeros([N,HC,WC,F])
+    out = np.zeros([N,HC,WC,F], dtype=np.float16)
     x_pad = np.pad(x, ((0,0),(pad[0],pad[1]),(pad[0],pad[1]),(0,0)), mode='constant')
     for i in range(N // batch_size):
         xi = x_pad[i*batch_size : (i+1)*batch_size, :, :, :]
@@ -71,7 +71,7 @@ def dense_unsigned(dev, x, x_addr, y_addr, core_row, core_col, input_num_bits, s
     N, H = x.shape
     F = len(y_addr)
     
-    out = np.zeros([N, F])
+    out = np.zeros([N, F], dtype=np.float16)
     for i in range(N // batch_size):
         xi = x[i*batch_size : (i+1)*batch_size, :]
         if segment_index is not None:

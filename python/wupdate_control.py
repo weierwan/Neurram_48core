@@ -49,9 +49,9 @@ def read_average(dev, vread, vref, t_shld, t_delta, read_cycles, ignore_cycles):
     return reading_avg
 
 
-def ramp_up_voltage(dev, channel, v_target):
+def ramp_up_voltage(dev, adc, channel, v_target):
     for v in np.arange(0, v_target, 0.1):
-        dac.dac_program_single_daisy(dev, 3, channel, v)
+        dac.dac_program_single_daisy(dev, adc, channel, v)
 
 
 def wupdate_setup(dev, vset_bl, vset_wl, vreset_sl, pulse_width, vreset_wl=5.0, wl_pulse_width=None):
