@@ -42,6 +42,14 @@ def weight_mapping(W, g_max, scheme='sign', w_max_percentile=100):
 	return G
 
 
+def merge_conv_batchnorm(W, b, gamma, beta, mean, variance, eps=0.001):
+    std = np.sqrt(variance + eps)
+    w_scaling = gamma / std
+    W_folded = W * w_scaling
+    b_folded = (b - mean) * w_scaling + beta
+    return (W_folded, b_folded)
+
+
 def conv_unsigned(dev, x, x_addr, y_addr, core_row, core_col, height, width, input_num_bits, segment_index=None, stride=1, pad=(0,0), bias=True, batch_size=1, pulse_multiplier=1, verbose=False):
     N, H, W, C = x.shape
     F = len(y_addr)

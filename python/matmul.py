@@ -145,12 +145,12 @@ def _encode_multi_row(x, x_addr, bias, fwd, encode_func=_encode_input, **kwargs)
     assert len(x) == len(x_addr)
     x_rows = []
     for x_i, addr_i, bias_i in zip(x, x_addr, bias):
-        x_reg = encode_func(x_i, addr_i, bias_i, fwd, **kwargs)
+        x_reg = encode_func(x_i, addr_i, bias_i, fwd, **kwargs).flatten()
         x_rows.append(x_reg)
     return np.vstack(x_rows)
     
     
-def _translate_outputs(outputs, y_addr, output_dim=256, batch_size=None):
+def _translate_outputs(outputs, y_addr, batch_size=None):
     if type(y_addr) is np.ndarray and len(y_addr.shape) == 1:
         if batch_size is None:
             return outputs[y_addr]
@@ -159,22 +159,22 @@ def _translate_outputs(outputs, y_addr, output_dim=256, batch_size=None):
     else:
         if batch_size is None:
             assert outputs.shape[0] == len(y_addr)
-            assert outputs.shape[1] == len(y_addr[0]) * output_dim
+            assert outputs.shape[1] == len(y_addr[0])
             out_list = []
             for r, y_addr_r in enumerate(y_addr):
                 out_row = []
                 for c, y_addr_rc in enumerate(y_addr_r):
-                    out_row.append(outputs[r, output_dim*c : output_dim*(c+1)][y_addr_rc])
+                    out_row.append(outputs[r, c, :][y_addr_rc])
                 out_list.append(out_row)
         else:
             assert outputs.shape[0] == batch_size
             assert outputs.shape[1] == len(y_addr)
-            assert outputs.shape[2] == len(y_addr[0]) * output_dim
+            assert outputs.shape[2] == len(y_addr[0])
             out_list = []
             for r, y_addr_r in enumerate(y_addr):
                 out_row = []
                 for c, y_addr_rc in enumerate(y_addr_r):
-                    out_row.append(outputs[:, r, output_dim*c : output_dim*(c+1)][:, y_addr_rc])
+                    out_row.append(outputs[:, r, c, :][:, y_addr_rc])
                 out_list.append(out_row)
     return out_list
 
@@ -193,13 +193,13 @@ def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_add
     
     
 def _setup_partial_reset_hw(dev, col_addr=None):
-    if col_addr is None:
-        shift_multiplier = 11
-        num_core = 6
+    if type(col_addr) is list:
+        num_core = len(col_addr)
+        shift_multiplier = 2 * num_core - 1
         single_core = False
     else:
-        shift_multiplier = 2 * col_addr + 1
         num_core = 1
+        shift_multiplier = 2 * col_addr + 1
         single_core = True
     dev.SetWireInValue(0x0F, (num_core & 0b111) | (shift_multiplier & 0xf) << 3 | single_core << 7)
 
@@ -278,11 +278,13 @@ def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
             btarray[start_i + y//8] = btarray[start_i + y//8] | (0b1 << (y%8))
     else:
         assert len(y_addr) == len(row_addr)
+        assert len(y_addr[0]) == len(col_addr)
+        start_i = 6-len(y_addr[0])
         btarray = bytearray(80 * len(y_addr))
         for r, addr_r in enumerate(y_addr):
             for c, addr_c in enumerate(addr_r):
                 for y in addr_c:
-                    btarray[r*80 + c*12 + y//8] = btarray[r*80 + c*12 + y//8] | (0b1 << (y%8))
+                    btarray[r*80 + (c+start_i)*12 + y//8] = btarray[r*80 + (c+start_i)*12 + y//8] | (0b1 << (y%8))
     data = dev.WriteToPipeIn(0x81, btarray)
     dev.ActivateTriggerIn(0x45, 6)
     while True:
@@ -293,8 +295,7 @@ def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
         
 
 def _decode_row_output(dev, num_row, num_col, batch_size, row_length=96):
-    reshape = (batch_size is None)
-    if reshape:
+    if batch_size is None:
         batch_size = 1
     ROW_ARRAY_SIZE = num_col * row_length
     BATCH_ARRAY_SIZE = ROW_ARRAY_SIZE * num_row
@@ -312,15 +313,12 @@ def _decode_row_output(dev, num_row, num_col, batch_size, row_length=96):
     assert status & (0b1 << 8) != 0
     assert status & (0b1 << 13) != 0
 
-    np_bytes = np.frombuffer(datain, dtype=np.uint8).reshape([batch_size, num_row, ROW_ARRAY_SIZE])
+    np_bytes = np.frombuffer(datain, dtype=np.uint8)
+    np_bytes = np_bytes.reshape([batch_size, num_row, num_col, row_length])[:, :, ::-1, :]
     num_step = np_bytes & 0x7f
     out_init = np_bytes >> 7
     output = (num_step - 0.5) * (1.0 - out_init * 2.0)
     
-    if reshape:
-        output = output.reshape([num_row, num_col, row_length])
-        output = output[:, ::-1, :]
-        output = output.reshape([num_row, ROW_ARRAY_SIZE])
     return output
 
 
@@ -331,11 +329,13 @@ def _read_num_step(dev, y_addr, row_addr=None, col_addr=None, batch_size=None):
             outputs = outputs.flatten()
         else:
             outputs = outputs.reshape([batch_size, -1])
-        return _translate_outputs(outputs, y_addr, output_dim=256, batch_size=batch_size)
     else:
+        num_row = len(y_addr)
         num_col = len(y_addr[0])
-        outputs = _decode_row_output(dev, len(y_addr), 6, batch_size)[:, :num_col * 96]
-        return _translate_outputs(outputs, y_addr, output_dim=96, batch_size=batch_size)
+        outputs = _decode_row_output(dev, num_row, num_col, batch_size, row_length=96)
+        if batch_size is None:
+            outputs = outputs.reshape([num_row, num_col, 96])
+    return _translate_outputs(outputs, y_addr, batch_size=batch_size)
     
 
 def _matmul_partial_reset_helper_hw(dev, y_addr, row_addr, col_addr=None, write_y_addr=True, readout=True):
@@ -390,9 +390,14 @@ def matmul_01_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pul
 def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, col_addr, pulse_multiplier=1, prep=True):
     iteration = 1
     batch_size = None
-    if type(x) is np.ndarray and len(x.shape) == 2:
-        iteration = x.shape[0]
-        batch_size = x.shape[0]
+    if type(x) is np.ndarray:
+        if len(x.shape) == 2:
+            iteration = x.shape[0]
+            batch_size = x.shape[0]
+    else:
+        if len(x[0][0].shape) == 2:
+            iteration = x[0][0].shape[0]
+            batch_size = x[0][0].shape[0]
     if signed:
         encode_func = _encode_input_signed
     else:

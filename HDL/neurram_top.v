@@ -477,7 +477,7 @@ wire [1:0] reg_neuron_read_trigger;
 wire [7:0] state_spi_clk, state_spi_idle;
 wire [1:0] reg_shift_out, reg_shift_in;
 wire [1:0] spi_config;
-wire [3:0] spi_shift_multiplier, spi_pipe_in_steps, spi_pipe_out_steps;
+wire [3:0] spi_shift_multiplier, spi_pipe_in_steps, spi_pipe_out_steps, spi_extra_shift_cycles;
 wire [96*6-1:0] spi_from_neurram[7:0], spi_single_core[7:0];
 wire all_spi_idle;
 wire [1:0] spi_clk_random_and_neuron;
@@ -493,6 +493,7 @@ assign spi_config = ml_read_idle ? ep0Dwire[1:0] : 2'b00;
 assign spi_shift_multiplier = ml_read_idle ? ep0Dwire[5:2] : nmlo_shift_multiplier;
 assign spi_pipe_in_steps = ep0Dwire[9:6];
 assign spi_pipe_out_steps = ep0Dwire[13:10];
+assign spi_extra_shift_cycles = ep0Dwire[18:15];
 // assign reg_neuron_read_trigger = ep44wire[3:2];
 assign all_spi_idle = & state_spi_idle;
 assign ep28wire[2] = all_spi_idle;
@@ -541,6 +542,7 @@ for (i=0; i<8; i=i+1) begin: gen_spi
 		.shift_multiplier(spi_shift_multiplier),
 		.pipe_in_steps(spi_pipe_in_steps),
 		.pipe_out_steps(spi_pipe_out_steps),
+		.extra_shift_cycles(spi_extra_shift_cycles),
 		.spi_idle(state_spi_idle[i]),
 		.pipe_in(data_pipein2spi[i*32 +: 32]),
 		.in_fifo_wr_en(write_pipein2spi[i]),

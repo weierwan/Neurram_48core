@@ -131,10 +131,11 @@ def pipe_out(dev, row_addr, forward, num_words, pipe_out_steps, read_shift_regs=
     return translate_bytearray(datain, forward, pipe_out_steps, read_shift_regs).reshape([len(row_addr), -1])
 
     
-def spi_read(dev, row_addr, forward, overwrite=True, shift_multiplier=1, pipe_out_steps=1, read_shift_regs=[True, True], is_pipe_out=True, num_words=16, trigger=True, prep=True):
+def spi_read(dev, row_addr, forward, overwrite=True, shift_multiplier=1, pipe_out_steps=1, read_shift_regs=[True, True], is_pipe_out=True,
+             num_words=16, extra_shift_cycles=0, trigger=True, prep=True):
     if prep:
         dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0xff) << 18)
-        dev.SetWireInValue(0x0D, 0b01 | (shift_multiplier & 0xf) << 2 | (pipe_out_steps & 0xf) << 10 | forward << 14)
+        dev.SetWireInValue(0x0D, 0b01 | (shift_multiplier & 0xf) << 2 | (pipe_out_steps & 0xf) << 10 | forward << 14 | (extra_shift_cycles & 0xf) << 15)
         dev.UpdateWireIns()
     
     if trigger:
@@ -160,7 +161,8 @@ def pipe_in(dev, inputs, row_addr, forward, pipe_in_steps=1, check_done=False):
                 break       
 
 
-def spi_write(dev, row_addr, forward, inputs=None, overwrite=True, shift_multiplier=1, pipe_in_steps=1, is_pipe_in=True, trigger=True, prep=True):
+def spi_write(dev, row_addr, forward, inputs=None, overwrite=True, shift_multiplier=1, pipe_in_steps=1, extra_shift_cycles=0,
+              is_pipe_in=True, trigger=True, prep=True):
     if prep:
         num_words = 0
         if inputs is not None:
@@ -169,7 +171,7 @@ def spi_write(dev, row_addr, forward, inputs=None, overwrite=True, shift_multipl
             else:
                 num_words = inputs.shape[1] // 16
         dev.SetWireInValue(0x15, (_compose_row_mask(row_addr) & 0xff) | (num_words & 0x3ff) << 8)
-        dev.SetWireInValue(0x0D, 0b10 | (shift_multiplier & 0xf) << 2 | (pipe_in_steps & 0xf) << 6 | forward << 14)
+        dev.SetWireInValue(0x0D, 0b10 | (shift_multiplier & 0xf) << 2 | (pipe_in_steps & 0xf) << 6 | forward << 14 | (extra_shift_cycles & 0xf) << 15)
         dev.UpdateWireIns()
 
     if is_pipe_in:
@@ -217,13 +219,14 @@ def read_single_core(dev, row_addr, col_addr, vert, read_shift_regs=[True, True]
                     is_pipe_out=is_pipe_out, num_words=16*batch_size, trigger=trigger, prep=prep)[0]
 
 
-def write_rows(dev, row_addr, vert, is_pipe_in=False, inputs=None, pipe_in_steps=6, trigger=True, prep=True):
-    spi_write(dev, row_addr, vert, inputs=inputs, shift_multiplier=2, pipe_in_steps=pipe_in_steps, is_pipe_in=is_pipe_in, trigger=trigger, prep=prep)
+def write_rows(dev, row_addr, vert, is_pipe_in=False, inputs=None, pipe_in_steps=6, starting_col=0, trigger=True, prep=True):
+    spi_write(dev, row_addr, vert, inputs=inputs, shift_multiplier=2, pipe_in_steps=pipe_in_steps, extra_shift_cycles=2*starting_col,
+              is_pipe_in=is_pipe_in, trigger=trigger, prep=prep)
 
 
-def read_rows(dev, row_addr, vert, read_shift_regs=[True, True], is_pipe_out=False, pipe_out_steps=6, trigger=True, prep=True):
+def read_rows(dev, row_addr, vert, read_shift_regs=[True, True], is_pipe_out=False, pipe_out_steps=6, starting_col=0, trigger=True, prep=True):
     return spi_read(dev, row_addr, not vert, shift_multiplier=2, pipe_out_steps=pipe_out_steps, read_shift_regs=read_shift_regs,
-                    is_pipe_out=is_pipe_out, num_words=16*pipe_out_steps, trigger=trigger, prep=prep)
+                    is_pipe_out=is_pipe_out, num_words=16*pipe_out_steps, extra_shift_cycles=2*starting_col, trigger=trigger, prep=prep)
 
 
 def enable_core(dev, addr_horz, addr_vert, dec_enable=0b11):
@@ -259,6 +262,14 @@ def enable_single_row(dev, addr_horz):
     enable_core(dev, swap_addr(addr_horz), 0b100, dec_enable=0b01)
     disable_core(dev, addr_horz, 0b000, dec_enable=0b01)
     disable_core(dev, addr_horz, 0b100, dec_enable=0b01)
+
+
+def enable_single_col(dev, addr_vert):
+    reset_core_enable_reg(dev)
+    enable_core(dev, 0b000, swap_addr(addr_vert), dec_enable=0b10)
+    enable_core(dev, 0b100, swap_addr(addr_vert), dec_enable=0b10)
+    disable_core(dev, 0b000, addr_vert, dec_enable=0b10)
+    disable_core(dev, 0b100, addr_vert, dec_enable=0b10)
 
 
 def enable_3_rows(dev, exclude_row):

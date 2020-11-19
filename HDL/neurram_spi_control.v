@@ -18,6 +18,7 @@ module neurram_spi_control #(parameter spi_length = 256)
 	input wire [3:0] shift_multiplier,
 	input wire [3:0] pipe_in_steps,
 	input wire [3:0] pipe_out_steps,
+	input wire [3:0] extra_shift_cycles,
 	output reg spi_idle,
 
 	input wire [31:0] pipe_in,
@@ -245,12 +246,16 @@ always @(*) begin
 			next_shift_spi2pip[1] = shift_spi2pip[1];
 			next_from_spi2pip = from_spi2pip;
 
-			if (clk_counter == spi_length * shift_multiplier -1) begin
-				if (spi_config[1] && (pipe_in_counter < pipe_in_steps)) next_state = STATE_PIPE_IN;
-				else if (spi_config[0]) next_state = STATE_PIPE_OUT;
+			if (clk_counter == spi_length * (shift_multiplier + extra_shift_cycles) -1) begin
+				if (spi_config[0]) next_state = STATE_PIPE_OUT;
 				else next_state = STATE_IDLE;
+			end else if (clk_counter == spi_length * shift_multiplier -1) begin
+				if (spi_config[1] && (pipe_in_counter < pipe_in_steps)) next_state = STATE_PIPE_IN;
+				if (spi_config[0] && (pipe_out_counter > 0)) next_state = STATE_PIPE_OUT;
+				else next_state = STATE_SHIFT;
+			end else begin
+				next_state = STATE_SHIFT;
 			end
-			else next_state = STATE_SHIFT;
 		end
 		STATE_PIPE_OUT: begin
 			spi_clk = 0;
