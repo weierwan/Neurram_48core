@@ -89,6 +89,8 @@ module neurram_top(
 
 parameter ADC_RRAM_NUM = 1;
 parameter DAC_NUM = 4;
+parameter NMLO_LENGTH = 128;
+parameter NMLO_CORE = 3;
 
 // Clocks
 wire sys_clk;
@@ -478,7 +480,8 @@ wire [7:0] state_spi_clk, state_spi_idle;
 wire [1:0] reg_shift_out, reg_shift_in;
 wire [1:0] spi_config;
 wire [3:0] spi_shift_multiplier, spi_pipe_in_steps, spi_pipe_out_steps, spi_extra_shift_cycles;
-wire [96*6-1:0] spi_from_neurram[7:0], spi_single_core[7:0];
+wire [NMLO_LENGTH*NMLO_CORE-1:0] spi_from_neurram[7:0];
+wire [255:0] spi_single_core[7:0];
 wire all_spi_idle;
 wire [1:0] spi_clk_random_and_neuron;
 wire record_spi;
@@ -501,10 +504,6 @@ assign record_spi = ~ml_read_idle;
 assign shift_fwd = ml_read_idle ? ep0Dwire[14] : 1'b0;
 assign nmlo_spi_trigger = | ml_read_spi_trigger;
 
-genvar c;
-for (c=0; c<8; c=c+1) begin: nmlo_spi
-	assign spi_single_core[c][96*6-256-1:0] = 0;
-end
 
 neurram_reg_control neurram_reg(
 	.clk(spi_ctrl_clk),
@@ -533,7 +532,7 @@ assign spi_clock_4_7[1] = state_spi_clk[4] | state_spi_clk[5] | state_spi_clk[6]
 genvar i;
 generate
 for (i=0; i<8; i=i+1) begin: gen_spi
-    neurram_spi_control neurram_spi(
+    neurram_spi_control #(.nmlo_length(NMLO_LENGTH), .nmlo_core(NMLO_CORE)) neurram_spi(
 		.clk(spi_ctrl_clk),
 		.ok_clk(sys_clk),
 		.rst(neurram_rst),
@@ -556,7 +555,7 @@ for (i=0; i<8; i=i+1) begin: gen_spi
 		.shift_in(shift2ok[i*2 +: 2]),
 		.record_spi(record_spi),
 		.spi_from_neurram(spi_from_neurram[i]),
-		.spi_single_core(spi_single_core[i][96*6-1 -: 256])
+		.spi_single_core(spi_single_core[i])
 	);
 end
 endgenerate
@@ -730,10 +729,12 @@ wire [255:0] data_pipein2nmlo;
 wire [7:0] write_pipein2nmlo;
 wire [7:0] fifo_full_nmlo2pipein;
 wire [2:0] nmlo_num_core;
+wire [9:0] nmlo_pipein_num_words;
 
 assign ep28wire[7] = arb_pipein2nmlo_idle;
 assign ep28wire[12] = nmlo_pipe_in_full;
 assign nmlo_num_core = ep0Fwire[2:0];
+assign nmlo_pipein_num_words = NMLO_LENGTH * NMLO_CORE / 32;
 
 
 arbiter_pipein2fifo #(.FIFO_SIZE(64)) arbiter_pipein2nmlo (
@@ -743,8 +744,8 @@ arbiter_pipein2fifo #(.FIFO_SIZE(64)) arbiter_pipein2nmlo (
 	.pipe_in(ep81pipe),
 	.pipe_in_write(ep81write),
 	.core_select(core_select),
-	.num_words(10'd20),
-	.padding_words(2'd2),
+	.num_words(nmlo_pipein_num_words),
+	.padding_words(2'd0),
 	.idle(arb_pipein2nmlo_idle),
 	.pipe_in_full(nmlo_pipe_in_full),
 	.data2fifo(data_pipein2nmlo),
@@ -760,7 +761,7 @@ wire [7:0] nmlo_pipeout_num_words;
 
 assign ep28wire[8] = arb_nmlo2pipeout_idle;
 assign ep28wire[13] = nmlo_pipe_out_empty;
-assign nmlo_pipeout_num_words = nmlo_single_core? 64 : (nmlo_num_core * 24);
+assign nmlo_pipeout_num_words = nmlo_single_core? 64 : (nmlo_num_core * NMLO_LENGTH / 4);
 
 
 arbiter_fifo2pipeout #(.FIFO_SIZE(1024)) arbiter_nmlo2pipeout(
@@ -803,7 +804,7 @@ assign nmlo_single_core = ep0Fwire[7];
 
 generate
 for (i=0; i<8; i=i+1) begin: gen_nmlo
-	neuron_multi_level_output nmlo(
+	neuron_multi_level_output #(.length(NMLO_LENGTH), .total_cores(NMLO_CORE)) nmlo(
 		.clk(neurram_clk),
 		.ok_clk(sys_clk),
 		.rst(neurram_rst),

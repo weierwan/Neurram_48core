@@ -7,7 +7,7 @@
 //
 //------------------------------------------------------------------------
 
-module neurram_spi_control #(parameter spi_length = 256)
+module neurram_spi_control #(parameter spi_length = 256, nmlo_length = 128, nmlo_core = 3)
 	(
 	input wire clk,
 	input wire ok_clk,
@@ -35,7 +35,7 @@ module neurram_spi_control #(parameter spi_length = 256)
 	input wire [1:0] shift_in,
 
 	input wire record_spi,
-	output wire [96*6-1:0] spi_from_neurram,
+	output wire [nmlo_length*nmlo_core-1:0] spi_from_neurram,
 	output wire [spi_length-1: 0] spi_single_core
 	);
 
@@ -95,7 +95,7 @@ reg [3:0] pipe_in_counter, next_pipe_in_counter;
 reg [3:0] pipe_out_counter, next_pipe_out_counter;
 reg [spi_length-1:0] shift_pip2spi[1:0], next_shift_pip2spi[1:0];
 reg [spi_length-1:0] shift_spi2pip[1:0], next_shift_spi2pip[1:0];
-reg [96*5-1:0] from_spi2pip, next_from_spi2pip;
+reg [nmlo_length*(nmlo_core-1)-1:0] from_spi2pip, next_from_spi2pip;
 wire [31:0] spi2pip_options [15:0];
 reg next_spi_idle;
 
@@ -111,8 +111,8 @@ end
 
 assign shift_out[0] = shift_pip2spi[0][0];
 assign shift_out[1] = shift_pip2spi[1][0];
-assign spi_from_neurram[96*6-1 -: 96] = shift_spi2pip[0][95 : 0];
-assign spi_from_neurram[0 +: 5*96] = from_spi2pip;
+assign spi_from_neurram[nmlo_length*nmlo_core-1 -: nmlo_length] = shift_spi2pip[0][nmlo_length-1 : 0];
+assign spi_from_neurram[0 +: nmlo_length*(nmlo_core-1)] = from_spi2pip;
 assign spi_single_core = shift_spi2pip[0];
 
 parameter [2:0] STATE_IDLE = 3'b000;
@@ -224,9 +224,10 @@ always @(*) begin
 			next_shift_spi2pip[0][spi_length-2:0] = shift_spi2pip[0][spi_length-1:1];
 			next_shift_spi2pip[1][spi_length-1] = shift_in[1];
 			next_shift_spi2pip[1][spi_length-2:0] = shift_spi2pip[1][spi_length-1:1];
-			if (record_spi && (clk_counter[8:6] == 3'b100 || clk_counter[8:5] == 4'b1010)) begin
-				next_from_spi2pip[96*5-1] = shift_spi2pip[0][0];
-				next_from_spi2pip[96*5-2 : 0] = from_spi2pip[96*5-1 : 1];
+			// if (record_spi && (clk_counter[8:6] == 3'b100 || clk_counter[8:5] == 4'b1010)) begin
+			if (record_spi && (clk_counter[8:7] == 2'b10)) begin
+				next_from_spi2pip[nmlo_length*(nmlo_core-1)-1] = shift_spi2pip[0][0];
+				next_from_spi2pip[nmlo_length*(nmlo_core-1)-2 : 0] = from_spi2pip[nmlo_length*(nmlo_core-1)-1 : 1];
 			end else next_from_spi2pip = from_spi2pip;
 			next_state = STATE_SHIFT2;
 		end
@@ -246,15 +247,21 @@ always @(*) begin
 			next_shift_spi2pip[1] = shift_spi2pip[1];
 			next_from_spi2pip = from_spi2pip;
 
-			if (clk_counter == spi_length * (shift_multiplier + extra_shift_cycles) -1) begin
-				if (spi_config[0]) next_state = STATE_PIPE_OUT;
-				else next_state = STATE_IDLE;
-			end else if (clk_counter == spi_length * shift_multiplier -1) begin
-				if (spi_config[1] && (pipe_in_counter < pipe_in_steps)) next_state = STATE_PIPE_IN;
-				if (spi_config[0] && (pipe_out_counter > 0)) next_state = STATE_PIPE_OUT;
-				else next_state = STATE_SHIFT;
+			if (extra_shift_cycles == 0) begin
+				if (clk_counter == spi_length * shift_multiplier -1) begin
+					if (spi_config[1] && (pipe_in_counter < pipe_in_steps)) next_state = STATE_PIPE_IN;
+					else if (spi_config[0]) next_state = STATE_PIPE_OUT;
+					else next_state = STATE_IDLE;
+				end else next_state = STATE_SHIFT;
 			end else begin
-				next_state = STATE_SHIFT;
+				if (clk_counter == spi_length * (shift_multiplier + extra_shift_cycles) -1) begin
+					if (spi_config[0]) next_state = STATE_PIPE_OUT;
+					else next_state = STATE_IDLE;
+				end else if (clk_counter == spi_length * shift_multiplier -1) begin
+					if (spi_config[0] && pipe_out_counter > 0) next_state = STATE_PIPE_OUT;
+					else if (spi_config[1] && pipe_in_counter < pipe_in_steps) next_state = STATE_PIPE_IN;
+					else next_state = STATE_SHIFT;
+				end else next_state = STATE_SHIFT;
 			end
 		end
 		STATE_PIPE_OUT: begin

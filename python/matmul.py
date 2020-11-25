@@ -12,6 +12,9 @@ VREF = 0.9
 BIAS10 = VREF
 IGATE_BIAS = 0.7
 VCOMP2 = VREF + 0.02
+NMLO_LENGTH = 128
+NMLO_CORE = 3
+NMLO_TOTAL_LENGTH = NMLO_LENGTH * NMLO_CORE
 
 def dac_setup(dev, vpos_bl=0.0, vneg_bl=0.0, vpos_sl=0.0, vneg_sl=0.0, vreset_plus=0.1, vreset_minus=0.06, vcomp_offset=0.02):
     dac.dac_program_single_daisy(dev, 0, 0, VREF + vcomp_offset)
@@ -227,7 +230,8 @@ def send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=None,
         spi.write_single_core(dev, row_addr, col_addr, vert=fwd, is_pipe_in=True, inputs=inputs, trigger=trigger, prep=prep)
     else:
         inputs = _encode_multi_row(x, x_addr, bias, fwd, encode_func=encode_func, **kwargs)
-        spi.write_rows(dev, row_addr, vert=fwd, is_pipe_in=True, inputs=inputs, pipe_in_steps=len(bias[0]), trigger=trigger, prep=prep)
+        spi.write_rows(dev, row_addr, vert=fwd, is_pipe_in=True, inputs=inputs, pipe_in_steps=len(bias[0]), starting_col=col_addr[0],
+                       trigger=trigger, prep=prep)
 
 
 def _matmul_unsigned_helper_hw(dev, readout=True):
@@ -271,20 +275,20 @@ def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=
 
 
 def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
+    btarray_length = NMLO_TOTAL_LENGTH // 8
     if type(y_addr) is np.ndarray and len(y_addr.shape) == 1:
-        btarray = bytearray(80)
-        start_i = (96*6-256)//8
+        btarray = bytearray(btarray_length)
         for y in y_addr:
-            btarray[start_i + y//8] = btarray[start_i + y//8] | (0b1 << (y%8))
+            btarray[y//8] = btarray[y//8] | (0b1 << (y%8))
     else:
         assert len(y_addr) == len(row_addr)
         assert len(y_addr[0]) == len(col_addr)
-        start_i = 6-len(y_addr[0])
-        btarray = bytearray(80 * len(y_addr))
+        start_i = NMLO_CORE-len(y_addr[0])
+        btarray = bytearray(btarray_length * len(y_addr))
         for r, addr_r in enumerate(y_addr):
             for c, addr_c in enumerate(addr_r):
                 for y in addr_c:
-                    btarray[r*80 + (c+start_i)*12 + y//8] = btarray[r*80 + (c+start_i)*12 + y//8] | (0b1 << (y%8))
+                    btarray[r*btarray_length + (c+start_i)*NMLO_LENGTH//8 + y//8] = btarray[r*btarray_length + (c+start_i)*NMLO_LENGTH//8 + y//8] | (0b1 << (y%8))
     data = dev.WriteToPipeIn(0x81, btarray)
     dev.ActivateTriggerIn(0x45, 6)
     while True:
@@ -294,7 +298,7 @@ def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
             break
         
 
-def _decode_row_output(dev, num_row, num_col, batch_size, row_length=96):
+def _decode_row_output(dev, num_row, num_col, batch_size, row_length=NMLO_LENGTH):
     if batch_size is None:
         batch_size = 1
     ROW_ARRAY_SIZE = num_col * row_length
@@ -332,9 +336,9 @@ def _read_num_step(dev, y_addr, row_addr=None, col_addr=None, batch_size=None):
     else:
         num_row = len(y_addr)
         num_col = len(y_addr[0])
-        outputs = _decode_row_output(dev, num_row, num_col, batch_size, row_length=96)
+        outputs = _decode_row_output(dev, num_row, num_col, batch_size, row_length=NMLO_LENGTH)
         if batch_size is None:
-            outputs = outputs.reshape([num_row, num_col, 96])
+            outputs = outputs.reshape([num_row, num_col, NMLO_LENGTH])
     return _translate_outputs(outputs, y_addr, batch_size=batch_size)
     
 
