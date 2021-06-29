@@ -12,7 +12,7 @@ module neurram_top(
 	inout  wire [31:0]  okUHU,
 	inout  wire         okAA,
 	input  wire         sys_clkn,
-    input  wire         sys_clkp,
+   input  wire         sys_clkp,
 
 	// Neurram interface
 	output	wire [7:0]	addr_local,
@@ -114,7 +114,7 @@ wire spi_ctrl_clk; // SPI interface clock
 
 assign dac_clk = clk_6MHz;
 assign adc_rram_clk = clk_12MHz;
-assign neurram_clk = clk_12MHz;
+assign neurram_clk = sys_clk; //clk_12MHz;
 assign spi_ctrl_clk = clk_25MHz;
 
 // Target interface bus:
@@ -273,9 +273,8 @@ dac_daisy_control dac_ctrl(
 wire adc_rram_rst, adc_rram_trigger, adc_rram_ack;
 wire adc_rram_valid;
 wire [18*ADC_RRAM_NUM-1:0] adc_rram_dout1, adc_rram_dout2;
-wire [15:0] rram_t_shld, rram_t_delta, t_shld_init, t_delta_init, t_shld_atrg, t_delta_atrg;
+wire [15:0] rram_t_shld, rram_t_delta;
 wire vread_on;
-wire manual_range_mode;
 
 assign adc_rram_rst = ep00wire[0];
 assign adc_rram_trigger = ep43wire[0] | atrg_rr_trigger;
@@ -283,8 +282,8 @@ assign adc_rram_ack = ep43wire[1] | atrg_rr_ack_trigger;
 assign ep20wire[8] = adc_rram_valid;
 assign ep21wire[18*ADC_RRAM_NUM-1:0] = adc_rram_dout1;
 assign ep22wire[18*ADC_RRAM_NUM-1:0] = adc_rram_dout2;
-assign rram_t_shld = (manual_range_mode)? t_shld_init : t_shld_atrg;
-assign rram_t_delta = (manual_range_mode)? t_delta_init : t_delta_atrg;
+// assign rram_t_shld = ep02wire[15:0];
+// assign rram_t_delta = ep02wire[31:16];
 
 resistance_read #(.num_adc(ADC_RRAM_NUM)) tia_adc(
 	.clk(adc_rram_clk),
@@ -307,13 +306,13 @@ resistance_read #(.num_adc(ADC_RRAM_NUM)) tia_adc(
 wire auto_range_trigger, auto_range_ack;
 wire [17:0] auto_range_vref;
 wire atrg_rr_trigger, atrg_rr_ack_trigger;
+wire [15:0] t_shld_init, t_delta_init;
 wire [17:0] atrg_dout1, atrg_dout2;
 wire atrg_valid;
 
 assign auto_range_trigger = ep43wire[2];
 assign auto_range_ack = ep43wire[3];
 assign auto_range_vref = ep12wire[17:0];
-assign manual_range_mode = ep12wire[18];
 assign t_shld_init = ep02wire[15:0];
 assign t_delta_init = ep02wire[31:16];
 assign ep29wire[17:0] = atrg_dout1;
@@ -337,13 +336,16 @@ auto_ranging at_rg(
 	.valid(atrg_valid),
 	.rr_trigger(atrg_rr_trigger),
 	.ack_trigger(atrg_rr_ack_trigger),
-	.t_shld(t_shld_atrg),
-	.t_delta(t_delta_atrg),
+	.t_shld(rram_t_shld),
+	.t_delta(rram_t_delta),
 	.rr_ready(adc_rram_valid),
 	.rr_dout1(adc_rram_dout1),
 	.rr_dout2(adc_rram_dout2)
 	);
 
+
+wire backward;
+assign backward = ~forward;
 
 // Neurram interface
 assign addr_local = ep04wire[7:0];
@@ -354,23 +356,23 @@ assign clear_vert_b = ~(ep03wire[1] | matmul_reg_reset | nmlo_reg_reset);
 assign enable_ota = ep06wire[6];
 // assign enable_sf = ep06wire[7];
 assign ext_1n = ep08wire[3] | neuron_ext_1n;
-assign ext_1n_bl_sel = ep08wire[4];
-assign ext_1n_sl_sel = ep08wire[5];
-assign ext_3n = ((ep05wire[0] & ~neuron_partial_reset) | (ep05wire[1] & ~neuron_partial_reset) | lfsr_mode | register_mode) & (~ep08wire[0]); //neuron_write_out | lfsr_neuron_on;
-assign ext_3n_bl_sel = ep08wire[1];
-assign ext_3n_sl_sel = ep08wire[2];
-assign ext_inference_enable_bl = ep08wire[8] | inference_mode | ifat_mode | neuron_ext_inf_on | lfsr_ext_inf_on | matmul_ext_inf_enable | nmlo_ext_inf_enable;
-assign ext_inference_enable_sl = ep08wire[9] | inference_mode | ifat_mode | neuron_ext_inf_on | lfsr_ext_inf_on | matmul_ext_inf_enable | nmlo_ext_inf_enable;
-assign ext_precharge_bl = ep08wire[6] | (ep05wire[1] & ~neuron_sampling) | (ep05wire[0] & ~forward & ~neuron_precharge_off) | (ep05wire[0] & forward & ~neuron_sampling);
-assign ext_precharge_sl = ep08wire[7] | (ep05wire[1] & ~neuron_sampling) | (ep05wire[0] & forward & ~neuron_precharge_off) | (ep05wire[0] & ~forward & ~neuron_sampling);
-assign ext_turn_on_wl = ep08wire[10];
+assign ext_1n_bl_sel = (ep05wire[0] | ep05wire[1]) & forward;
+assign ext_1n_sl_sel = (ep05wire[0] | ep05wire[1]) & backward;
+assign ext_3n = ep08wire[0] | neuron_ext_3n | lfsr_mode;
+assign ext_3n_bl_sel = ((ep05wire[0] | register_mode) & backward) | ((ep05wire[1] & ~register_mode) & forward);
+assign ext_3n_sl_sel = ((ep05wire[0] | register_mode) & forward) | ((ep05wire[1] & ~register_mode) & backward);
+assign ext_inference_enable_bl = ep08wire[8] | neuron_inf_enable;
+assign ext_inference_enable_sl = ep08wire[9] | neuron_inf_enable;
+assign ext_precharge_bl = ep08wire[6] | neuron_precharge_on;
+assign ext_precharge_sl = ep08wire[7] | neuron_precharge_on;
+assign ext_turn_on_wl = ep08wire[10] | (ep05wire[0] & neuron_wl_on);
 // assign flip_neuron_horz_1 = ep06wire[1];
 // assign flip_neuron_horz_2 = ep06wire[2];
 // assign flip_neuron_vert_1 = ep06wire[3];
 // assign flip_neuron_vert_2 = ep06wire[4];
 assign forward = ep05wire[5];
-assign ifat_mode = ep05wire[1] & (~(neuron_compare_write | lfsr_inf_mode_off | register_mode | ep05wire[0] | ep05wire[2] | ep05wire[4]));
-assign inference_mode = ep05wire[0] & (~(neuron_compare_write | lfsr_inf_mode_off | register_mode | matmul_inference_mode_off | nmlo_inf_mode_off | ep05wire[1] | ep05wire[2] | ep05wire[4]));
+assign ifat_mode = 1'b0;
+assign inference_mode = 1'b0;
 // assign latch_en = ep10wire[6];
 assign lfsr_mode = ep05wire[2] | lfsr_mode_on; //& (~(neuron_compare_write | register_mode | ep05wire[0] | ep05wire[1] | ep05wire[4]));
 // assign lfsrhorz_clk = 1'b0;
@@ -633,33 +635,32 @@ lfsr_control lfsr(
 
 //Neuron Control
 
-wire neuron_run_all, neuron_run_all_reset, keep_integ_on, use_ext_1n, use_ext_3n;
+wire neuron_run_all, neuron_run_all_reset, keep_wl_on, neuron_multi_sampling;
 wire [1:0] neuron_comparison_phase, neuron_partial_reset_phase;
-wire neuron_idle, neuron_sampling, neuron_compare_write, neuron_partial_reset;
-wire neuron_ext_1n, neuron_write_out, neuron_precharge_off, neuron_ext_inf_on;
+wire neuron_idle;
+wire neuron_ext_1n, neuron_ext_3n, neuron_wl_on, neuron_inf_enable, neuron_precharge_on;
 wire [7:0] t_opamp, t_sample;
 wire [3:0] neuron_precharge_time;
 wire sw_in_sample_neuron;
 wire neuron_sample_trigger, neuron_integ_trig;
 wire [7:0] neuron_num_pulses;
-wire neuron_cds_trigger, net_neuron_trigger;
+wire neuron_cds_trigger;
 wire neuron_partial_reset_trigger, neuron_compare_write_trigger, ml_read_neuron_trigger;
 
 assign neuron_run_all = ep09wire[0];
 assign neuron_run_all_reset = ep09wire[1];
-assign keep_integ_on = 1'b0;
-assign use_ext_1n = ep09wire[2];
-assign use_ext_3n = ep09wire[3];
+assign keep_wl_on = ep09wire[22];
+assign neuron_multi_sampling = ep09wire[23];
 assign t_opamp = ep09wire[11:4];
 assign t_sample = ep10wire[11:4];
 assign neuron_comparison_phase = ep09wire[13:12];
 assign neuron_partial_reset_phase = ep09wire[13:12];
 assign ep28wire[0] = neuron_idle;
-assign neuron_sample_trigger = ep45wire[1] | matmul_neuron_sample_trig;
+assign neuron_sample_trigger = ep45wire[1] | matmul_neuron_sample_trig | in_energy_sample_trigger;
 assign neuron_integ_trig = ep45wire[3] | lfsr_integ_trig;
-assign neuron_num_pulses =  matmul_unsigned_idle ? ep09wire[21:14] : matmul_num_pulses;
-assign neuron_cds_trigger = ep45wire[0] | net_neuron_trigger | matmul_neuron_cds_trig;
-assign neuron_partial_reset_trigger = ep45wire[4];
+assign neuron_num_pulses =  matmul_unsigned_idle ? (in_energy_idle ? ep09wire[21:14] : in_energy_num_pulses) : matmul_num_pulses;
+assign neuron_cds_trigger = ep45wire[0] | in_energy_cds_trigger | out_energy_cds_trigger | matmul_neuron_cds_trig;
+assign neuron_partial_reset_trigger = ep45wire[4] | out_energy_reset_trigger;
 assign neuron_compare_write_trigger = ep45wire[2] | ml_read_neuron_trigger;
 
 // assign neuron_precharge_time = ep10wire[3:0];
@@ -673,14 +674,17 @@ neuron_control neuron(
 	.integ_trigger(neuron_integ_trig),
 	.run_all(neuron_run_all),
 	.run_all_reset(neuron_run_all_reset),
-	.keep_integ_on(keep_integ_on),
-	.use_ext_1n(use_ext_1n),
-	.use_ext_3n(use_ext_3n),
+	.keep_wl_on(keep_wl_on),
+	.multi_sampling(neuron_multi_sampling),
+	.reset_latch_on(ep09wire[24]),
 	.comparison_phase(neuron_comparison_phase),
 	.partial_reset_phase(neuron_partial_reset_phase),
 	.idle(neuron_idle),
-	.t_opamp(t_opamp),
 	.t_sample(t_sample),
+	.t_cds(ep09wire[31:25]),
+	.t_integ(t_opamp),
+	.t_comp(ep10wire[19:12]),
+	.t_reset(ep10wire[27:20]),
 	.sw_cds(sw_cds),
 	.sw_cds_vref(sw_cds_vref),
 	.sw_in_sample(sw_in_sample_neuron),
@@ -693,35 +697,61 @@ neuron_control neuron(
 	.v_level2_config(vlevel2_config),
 	.ns_pulse_trig(trigger_in),
 	.ext_1n(neuron_ext_1n),
-	.ext_3n(neuron_write_out),
-	.precharge_off(neuron_precharge_off),
+	.ext_3n(neuron_ext_3n),
 	.neuron_read_trigger(reg_neuron_read_trigger),
 	.register_mode(register_mode),
-	.sampling(neuron_sampling),
-	.compare_write(neuron_compare_write),
-	.partial_reset(neuron_partial_reset),
-	.ext_inf_on(neuron_ext_inf_on),
 	.num_pulses(neuron_num_pulses),
 	.sel_vfb(sel_vfb),
-	.partial_reset_trigger(neuron_partial_reset_trigger)
+	.partial_reset_trigger(neuron_partial_reset_trigger),
+	.wl_on(neuron_wl_on),
+	.inf_enable(neuron_inf_enable),
+	.precharge_on(neuron_precharge_on),
+	.state(ep28wire[20:15])
 	);
 
-wire net_trigger;
-wire [31:0] net_cycles;
-wire net_idle;
+wire in_energy_trigger, out_energy_trigger;
+wire [31:0] energy_cycles;
+wire in_energy_idle, out_energy_idle;
+wire in_energy_sample_trigger, in_energy_cds_trigger, out_energy_reset_trigger, out_energy_cds_trigger;
+wire [7:0] in_energy_num_pulses;
+wire [7:0] out_energy_steps;
 
-assign net_trigger = ep45wire[10];
-assign net_cycles = ep11wire;
-assign ep28wire[1] = net_idle;
+wire [2:0] matmul_unsigned_num_bits;
+wire [4:0] matmul_unsigned_pulse_mult;
 
-neuron_energy_test net(
+assign in_energy_trigger = ep45wire[10];
+assign out_energy_trigger = ep45wire[11];
+assign energy_cycles = ep11wire;
+assign out_energy_steps = ep0Fwire[15:8];
+assign ep28wire[1] = in_energy_idle;
+assign ep28wire[14] = out_energy_idle;
+
+matmul_input_energy_test in_energy(
 	.clk(neurram_clk),
 	.rst(neurram_rst),
-	.dp_trigger(net_trigger),
+	.trigger(in_energy_trigger),
+	.num_bits(matmul_unsigned_num_bits),
+	.pulse_multiplier(matmul_unsigned_pulse_mult),
+	.iterations(energy_cycles),
+	.idle(in_energy_idle),
 	.neuron_idle(neuron_idle),
-	.cycles(net_cycles),
-	.neuron_trigger(net_neuron_trigger),
-	.idle_out(net_idle)
+	.neuron_sample_trigger(in_energy_sample_trigger),
+	.neuron_cds_trigger(in_energy_cds_trigger),
+	.num_pulses(in_energy_num_pulses)
+	);
+
+
+matmul_output_energy_test out_energy(
+	.clk(neurram_clk),
+	.rst(neurram_rst),
+	.trigger(out_energy_trigger),
+	.cds(ep0Fwire[16]),
+	.steps(out_energy_steps),
+	.iterations(energy_cycles),
+	.idle(out_energy_idle),
+	.neuron_idle(neuron_idle),
+	.neuron_cds_trigger(out_energy_cds_trigger),
+	.neuron_reset_trigger(out_energy_reset_trigger)
 	);
 
 
@@ -835,6 +865,8 @@ end
 endgenerate
 
 
+
+
 // neuron_multi_level_output nmlo(
 // 	.clk(neurram_clk),
 // 	.ok_clk(okClk),
@@ -861,8 +893,6 @@ endgenerate
 
 
 wire matmul_unsigned_trigger, matmul_unsigned_cds, matmul_unsigned_idle;
-wire [2:0] matmul_unsigned_num_bits;
-wire [4:0] matmul_unsigned_pulse_mult;
 wire matmul_neuron_sample_trig, matmul_neuron_cds_trig, matmul_spi_trig;
 wire matmul_inference_mode_off, matmul_ext_inf_enable;
 wire [7:0] matmul_num_pulses;

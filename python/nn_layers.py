@@ -130,3 +130,7 @@ def quantize_signed(x, num_bits, max_value):
 
 def quantize_signed_rescale(x, num_bits, max_value):
     return x / 2**(num_bits-1) * max_value
+
+
+def fake_quant_signed(x, num_bits, max_value):
+    return quantize_signed_rescale(quantize_signed(x, num_bits, max_value), num_bits, max_value)

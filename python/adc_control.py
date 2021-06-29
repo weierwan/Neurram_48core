@@ -33,11 +33,39 @@ def adc_reading_encode(voltage, vref):
     return int(voltage * 2**18 / vref) & 0x3ffff
 
 
+def read_current_trigger(dev, t_delta, vref=0.9, verbose=False):
+    dev.ActivateTriggerIn(ADDR_RRAM_TRIGGER, 0)
+    while True:
+        dev.UpdateWireOuts()
+        status = dev.GetWireOutValue(0x20)
+        if status & (0b1 << 8) != 0:
+            d_start = dev.GetWireOutValue(0x21)
+            d_end = dev.GetWireOutValue(0x22)
+            dev.ActivateTriggerIn(ADDR_RRAM_TRIGGER, 1) # ack
+            break
+
+    d_start = read_bin2fp(d_start, ADC_RRAM_VREF)
+    d_end = read_bin2fp(d_end, ADC_RRAM_VREF)
+    delta_v = d_start - d_end
+
+    current = C_INTEG * delta_v / (t_delta * CLK_PERIOD)
+    if verbose:
+        print(d_start)
+        print(d_end)
+    return current
+
+
+def read_current_setup(dev, t_shld, t_delta, vref=0.9):
+    t_setting = ((int(t_delta) & 0xffff) << 16) | (int(t_shld) & 0xffff)
+    dev.SetWireInValue(0x02, t_setting)
+    dev.SetWireInValue(0x12, adc_reading_encode(vref, ADC_RRAM_VREF) | 0b1 << 18)
+    dev.UpdateWireIns()
+
 
 def read_current_auto_range(dev, t_shld, t_delta, vref=0.9, output_t=False, verbose=False):
     t_setting = ((int(t_delta) & 0xffff) << 16) | (int(t_shld) & 0xffff)
     dev.SetWireInValue(0x02, t_setting)
-    dev.SetWireInValue(0x12, adc_reading_encode(vref, ADC_RRAM_VREF))
+    dev.SetWireInValue(0x12, adc_reading_encode(vref, ADC_RRAM_VREF) | 0b0 << 18)
     dev.UpdateWireIns()
 
     dev.ActivateTriggerIn(ADDR_RRAM_TRIGGER, 2)
@@ -69,8 +97,8 @@ def read_current_auto_range(dev, t_shld, t_delta, vref=0.9, output_t=False, verb
 
 
 def adc_setup(dev, vread=1.0, vref=0.9, vread_wl=3.3):
-    dac.dac_program_single_daisy(dev, 1, 6, vread)
-    dac.dac_program_single_daisy(dev, 1, 7, vref)
+    dac.ramp_up_voltage(dev, 1, 6, vread)
+    dac.ramp_up_voltage(dev, 1, 7, vref)
 
     
 def read_average_resistance(dev, vread, vref, t_shld, t_delta, read_cycles, ignore_cycles, adc_idx=0, dac_setup=False, current=False,
@@ -90,7 +118,7 @@ def read_average_resistance(dev, vread, vref, t_shld, t_delta, read_cycles, igno
     dev.UpdateWireIns()
     
     if output_raw:
-        return (vread-vref) / currents[ignore_cycles:]
+        return (vread-vref) / currents[:]
     currents_avg = np.mean(currents[ignore_cycles:])
     if currents_avg == 0:
         print('Two voltage readings are identical')

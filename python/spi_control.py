@@ -219,14 +219,22 @@ def read_single_core(dev, row_addr, col_addr, vert, read_shift_regs=[True, True]
                     is_pipe_out=is_pipe_out, num_words=16*batch_size, trigger=trigger, prep=prep)[0]
 
 
-def write_rows(dev, row_addr, vert, is_pipe_in=False, inputs=None, pipe_in_steps=6, starting_col=0, trigger=True, prep=True):
-    spi_write(dev, row_addr, vert, inputs=inputs, shift_multiplier=2, pipe_in_steps=pipe_in_steps, extra_shift_cycles=2*starting_col,
+def write_rows(dev, row_addr, vert, is_pipe_in=False, inputs=None, col_addr=range(6), trigger=True, prep=True):
+    if vert:
+        extra_shift_cycles = 2 * col_addr[0]
+    else:
+        extra_shift_cycles = 2 * (5 - col_addr[-1])
+    spi_write(dev, row_addr, vert, inputs=inputs, shift_multiplier=2, pipe_in_steps=len(col_addr), extra_shift_cycles=extra_shift_cycles,
               is_pipe_in=is_pipe_in, trigger=trigger, prep=prep)
 
 
-def read_rows(dev, row_addr, vert, read_shift_regs=[True, True], is_pipe_out=False, pipe_out_steps=6, starting_col=0, trigger=True, prep=True):
-    return spi_read(dev, row_addr, not vert, shift_multiplier=2, pipe_out_steps=pipe_out_steps, read_shift_regs=read_shift_regs,
-                    is_pipe_out=is_pipe_out, num_words=16*pipe_out_steps, extra_shift_cycles=2*starting_col, trigger=trigger, prep=prep)
+def read_rows(dev, row_addr, vert, read_shift_regs=[True, True], is_pipe_out=False, col_addr=range(6), trigger=True, prep=True):
+    if vert:
+        extra_shift_cycles = 2 * col_addr[0]
+    else:
+        extra_shift_cycles = 2 * (5 - col_addr[-1])
+    return spi_read(dev, row_addr, not vert, shift_multiplier=2, pipe_out_steps=len(col_addr), read_shift_regs=read_shift_regs,
+                    is_pipe_out=is_pipe_out, num_words=16*len(col_addr), extra_shift_cycles=extra_shift_cycles, trigger=trigger, prep=prep)
 
 
 def enable_core(dev, addr_horz, addr_vert, dec_enable=0b11):
@@ -256,20 +264,34 @@ def enable_single_core(dev, addr_horz, addr_vert):
     disable_core(dev, addr_horz, swap_addr(addr_vert))
 
 
-def enable_single_row(dev, addr_horz):
+def enable_single_row(dev, addr_horz, first_half=True, second_half=True):
     reset_core_enable_reg(dev)
-    enable_core(dev, swap_addr(addr_horz), 0b000, dec_enable=0b01)
-    enable_core(dev, swap_addr(addr_horz), 0b100, dec_enable=0b01)
-    disable_core(dev, addr_horz, 0b000, dec_enable=0b01)
-    disable_core(dev, addr_horz, 0b100, dec_enable=0b01)
+    if first_half:
+        enable_core(dev, swap_addr(addr_horz), 0b000, dec_enable=0b01)
+        disable_core(dev, addr_horz, 0b000, dec_enable=0b01)
+    if second_half:
+        enable_core(dev, swap_addr(addr_horz), 0b100, dec_enable=0b01)
+        disable_core(dev, addr_horz, 0b100, dec_enable=0b01)
 
 
-def enable_single_col(dev, addr_vert):
+def enable_single_col(dev, addr_vert, first_half=True, second_half=True):
     reset_core_enable_reg(dev)
-    enable_core(dev, 0b000, swap_addr(addr_vert), dec_enable=0b10)
-    enable_core(dev, 0b100, swap_addr(addr_vert), dec_enable=0b10)
-    disable_core(dev, 0b000, addr_vert, dec_enable=0b10)
-    disable_core(dev, 0b100, addr_vert, dec_enable=0b10)
+    if first_half:
+        enable_core(dev, 0b000, swap_addr(addr_vert), dec_enable=0b10)
+        disable_core(dev, 0b000, addr_vert, dec_enable=0b10)
+    if second_half:
+        enable_core(dev, 0b100, swap_addr(addr_vert), dec_enable=0b10)
+        disable_core(dev, 0b100, addr_vert, dec_enable=0b10)
+
+
+def enable_2_cores_vert(dev, addr_horz, addr_vert):
+    reset_core_enable_reg(dev)
+    enable_core(dev, swap_addr(addr_horz), swap_addr(addr_vert))
+    disable_core(dev, swap_addr(addr_horz), addr_vert)
+    disable_core(dev, addr_horz, swap_addr(addr_vert))
+    enable_core(dev, swap_addr(addr_horz+4), swap_addr(addr_vert))
+    disable_core(dev, swap_addr(addr_horz+4), addr_vert)
+    disable_core(dev, addr_horz+4, swap_addr(addr_vert))
 
 
 def enable_3_rows(dev, exclude_row):

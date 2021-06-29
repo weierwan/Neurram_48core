@@ -2,6 +2,8 @@
 # Author: Weier Wan
 #
 
+import numpy as np
+
 DAC_NUM = 4
 DAC_NUM_CHANNEL = 8
 
@@ -107,3 +109,8 @@ def dac_translate_cmd(chnl_idx, voltage, vref, cmd=0b0011):
     else:
         data = int(voltage / vref * 2**16)
     return (cmd << 20) | (chnl_idx << 16) | data & 0x00ffffff
+
+
+def ramp_up_voltage(dev, adc, channel, v_target):
+    for v in np.arange(0, v_target, 0.1):
+        dac_program_single_daisy(dev, adc, channel, v)

@@ -55,10 +55,10 @@ def ramp_up_voltage(dev, adc, channel, v_target):
 
 
 def wupdate_setup(dev, vset_bl, vset_wl, vreset_sl, pulse_width, vreset_wl=5.0, wl_pulse_width=None):
-    dac.dac_program_single_daisy(dev, 3, 0, vset_bl)
-    dac.dac_program_single_daisy(dev, 3, 1, vset_wl)
-    dac.dac_program_single_daisy(dev, 3, 2, vreset_sl)
-    dac.dac_program_single_daisy(dev, 3, 3, vreset_wl)
+    dac.ramp_up_voltage(dev, 3, 0, vset_bl)
+    dac.ramp_up_voltage(dev, 3, 1, vset_wl)
+    dac.ramp_up_voltage(dev, 3, 2, vreset_sl)
+    dac.ramp_up_voltage(dev, 3, 3, vreset_wl)
     dev.SetWireInValue(0x07, int(pulse_width/SYS_CLK_PERIOD) & 0xffffffff)
     if wl_pulse_width is None:
         wl_pulse_width = pulse_width
@@ -69,9 +69,9 @@ def wupdate_setup(dev, vset_bl, vset_wl, vreset_sl, pulse_width, vreset_wl=5.0, 
 def apply_set_pulse(dev, vset_bl, vset_wl, tset, prep=True):
     if prep:
         # dac.dac_program_single_daisy(dev, 3, 0, 1.0)
-        dac.dac_program_single_daisy(dev, 3, 0, vset_bl)
+        dac.ramp_up_voltage(dev, 3, 0, vset_bl)
         # dac.dac_program_single_daisy(dev, 3, 1, 1.0)
-        dac.dac_program_single_daisy(dev, 3, 1, vset_wl)
+        dac.ramp_up_voltage(dev, 3, 1, vset_wl)
         dev.SetWireInValue(0x07, int(tset/SYS_CLK_PERIOD) & 0xffffffff)
         dev.UpdateWireIns()
     dev.SetWireInValue(0x0B, 0b10)
@@ -90,9 +90,9 @@ def apply_set_pulse(dev, vset_bl, vset_wl, tset, prep=True):
 def apply_reset_pulse(dev, vreset_sl, treset, vreset_wl=5.0, prep=True):
     if prep:
         # dac.dac_program_single_daisy(dev, 3, 2, 1.0)
-        dac.dac_program_single_daisy(dev, 3, 2, vreset_sl)
+        dac.ramp_up_voltage(dev, 3, 2, vreset_sl)
         # dac.dac_program_single_daisy(dev, 3, 3, 1.0)
-        dac.dac_program_single_daisy(dev, 3, 3, vreset_wl)
+        dac.ramp_up_voltage(dev, 3, 3, vreset_wl)
         dev.SetWireInValue(0x07, int(treset/SYS_CLK_PERIOD) & 0xffffffff)
         dev.UpdateWireIns()
     dev.SetWireInValue(0x0B, 0b01)

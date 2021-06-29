@@ -16,7 +16,7 @@ NMLO_LENGTH = 128
 NMLO_CORE = 3
 NMLO_TOTAL_LENGTH = NMLO_LENGTH * NMLO_CORE
 
-def dac_setup(dev, vpos_bl=0.0, vneg_bl=0.0, vpos_sl=0.0, vneg_sl=0.0, vreset_plus=0.1, vreset_minus=0.06, vcomp_offset=0.02):
+def dac_setup(dev, vpos_bl=None, vneg_bl=None, vpos_sl=None, vneg_sl=None, vreset_plus=0.1, vreset_minus=0.06, vcomp_offset=0.02):
     dac.dac_program_single_daisy(dev, 0, 0, VREF + vcomp_offset)
     dac.dac_program_single_daisy(dev, 0, 1, VREF + vcomp_offset)
     dac.dac_program_single_daisy(dev, 0, 2, VREF)
@@ -26,13 +26,19 @@ def dac_setup(dev, vpos_bl=0.0, vneg_bl=0.0, vpos_sl=0.0, vneg_sl=0.0, vreset_pl
     dac.dac_program_single_daisy(dev, 2, 2, VREF - vreset_minus)
     dac.dac_program_single_daisy(dev, 0, 4, VREF + vreset_plus)
     
-    dac.dac_program_single_daisy(dev, 1, 0, VREF - vneg_bl)
-    dac.dac_program_single_daisy(dev, 1, 2, VREF + vpos_bl)
-    dac.dac_program_single_daisy(dev, 1, 3, VREF - vneg_sl)
-    dac.dac_program_single_daisy(dev, 1, 5, VREF + vpos_sl)
+    if vneg_bl is not None:
+        dac.dac_program_single_daisy(dev, 1, 0, VREF - vneg_bl)
+    if vpos_bl is not None:
+        dac.dac_program_single_daisy(dev, 1, 2, VREF + vpos_bl)
+    if vneg_sl is not None:
+        dac.dac_program_single_daisy(dev, 1, 3, VREF - vneg_sl)
+        # dac.ramp_up_voltage(dev, 1, 3, VREF - vneg_sl)
+    if vpos_sl is not None:
+        dac.dac_program_single_daisy(dev, 1, 5, VREF + vpos_sl)
+        # dac.ramp_up_voltage(dev, 1, 5, VREF + vpos_sl)
 
 
-def _populate_nparray(x, x_addr, bias, fwd):
+def _populate_nparray(x, x_addr, bias, fwd, reverse=False):
     transform = len(x.shape) == 1
     if transform:
         x = x.reshape([1, -1])
@@ -50,23 +56,28 @@ def _populate_nparray(x, x_addr, bias, fwd):
     if bias:
         x_reg[:, x_addr[2*L : 2*(L+bias)]] = np.tile([1, -1], bias)
     if not fwd:
-        if bias:
-            x_reg[:, x_addr[-1]+1:] = np.tile([1,-1], 128-L-bias)
+        if reverse:
+            padding = [-1, 1]
         else:
-            x_reg[:, x_addr[-1]+1:] = np.tile([1,-1], 128-L)
+            padding = [1, -1]
+        padding_idx = np.delete(np.arange(256), x_addr)
+        if bias:
+            x_reg[:, padding_idx] = np.tile(padding, 128-L-bias)
+        else:
+            x_reg[:, padding_idx] = np.tile(padding, 128-L)
     if transform:
         x_reg = x_reg.reshape([-1,])
     return x_reg
 
 
-def _encode_input(x, x_addr, bias, fwd):
+def _encode_input(x, x_addr, bias, fwd, reverse=False):
     if type(x) is np.ndarray:
-        return _populate_nparray(x, x_addr, bias, fwd)
+        return _populate_nparray(x, x_addr, bias, fwd, reverse=reverse)
     assert len(x) == len(x_addr)
     assert len(x) == len(bias)
     x_reg = []
     for x_i, addr_i, bias_i in zip(x, x_addr, bias):
-        x_reg.append(_populate_nparray(x_i, addr_i, bias_i, fwd))
+        x_reg.append(_populate_nparray(x_i, addr_i, bias_i, fwd, reverse=reverse))
     return np.hstack(x_reg)
 
 
@@ -83,7 +94,7 @@ def _encode_input_01(x, x_addr, bias, fwd, neg=False):
         if neg:
             x_bipolar = [-i for i in x_bipolar]
             ones_bipolar = [-i for i in ones_bipolar]
-    return np.hstack([_encode_input(x_bipolar, x_addr, bias, fwd), _encode_input(ones_bipolar, x_addr, bias, fwd)])
+    return np.hstack([_encode_input(x_bipolar, x_addr, bias, fwd), _encode_input(ones_bipolar, x_addr, bias, fwd, reverse=True)])
 
 
 def _encode_input_101(x, x_addr, bias, fwd):
@@ -182,12 +193,13 @@ def _translate_outputs(outputs, y_addr, batch_size=None):
     return out_list
 
 
-def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_addr=None, ota_time=63, num_bits=None, reset_reg=True, iteration=1):
+def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_addr=None, ota_time=3, sample_time=2, num_bits=None, reset_reg=True, iteration=1, max_steps=128,
+                     cds_time=3, comp_time=2, reset_time=0):
     dev.SetWireInValue(0x06, 0b01100000) # Enable neuron OTA and reg_controlled_wl
-    dev.SetWireInValue(0x09, run_all | partial_reset << 1 | 0b11 << 2 | (ota_time & 0xff) << 4 | 0b01 << 12 | (num_pulses << 14))
-    dev.SetWireInValue(0x10, 1 << 4)
+    dev.SetWireInValue(0x09, run_all | partial_reset << 1 | 0b11 << 2 | (ota_time & 0xff) << 4 | 0b01 << 12 | (num_pulses << 14) | 0b01 << 23 | cds_time << 25)
+    dev.SetWireInValue(0x10, sample_time << 4 | comp_time << 12 | reset_time << 20)
     if partial_reset:
-        _setup_partial_reset_hw(dev, col_addr)
+        _setup_partial_reset_hw(dev, col_addr, fwd, max_steps)
     if num_bits is not None:
         dev.SetWireInValue(0x0E, (iteration & 0xff) << 10 | (num_pulses & 0b11111) << 5 | ((num_bits-1) & 0b111) << 2 | reset_reg << 1 | 0b1)
     dev.UpdateWireIns()
@@ -195,16 +207,19 @@ def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_add
     dev.UpdateWireIns()
     
     
-def _setup_partial_reset_hw(dev, col_addr=None):
+def _setup_partial_reset_hw(dev, col_addr=None, fwd=True, max_steps=128):
     if type(col_addr) is list:
         num_core = len(col_addr)
         shift_multiplier = 2 * num_core - 1
         single_core = False
     else:
         num_core = 1
-        shift_multiplier = 2 * col_addr + 1
+        if fwd:
+            shift_multiplier = 2 * col_addr + 1
+        else:
+            shift_multiplier = 2 * (col_addr + 1)
         single_core = True
-    dev.SetWireInValue(0x0F, (num_core & 0b111) | (shift_multiplier & 0xf) << 3 | single_core << 7)
+    dev.SetWireInValue(0x0F, (num_core & 0b111) | (shift_multiplier & 0xf) << 3 | single_core << 7 | max_steps << 8 | 0b0 << 16)
 
 
 def _trigger_neuron(dev, trigger):
@@ -230,7 +245,7 @@ def send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=None,
         spi.write_single_core(dev, row_addr, col_addr, vert=fwd, is_pipe_in=True, inputs=inputs, trigger=trigger, prep=prep)
     else:
         inputs = _encode_multi_row(x, x_addr, bias, fwd, encode_func=encode_func, **kwargs)
-        spi.write_rows(dev, row_addr, vert=fwd, is_pipe_in=True, inputs=inputs, pipe_in_steps=len(bias[0]), starting_col=col_addr[0],
+        spi.write_rows(dev, row_addr, vert=fwd, is_pipe_in=True, inputs=inputs, col_addr=col_addr,
                        trigger=trigger, prep=prep)
 
 
@@ -254,13 +269,13 @@ def matmul_bipolar(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_
     
     # Read register
     if type(x) is np.ndarray and len(x.shape) == 1:
-        out = spi.read_single_core(dev, row_addr, col_addr, False, read_shift_regs=[True, False], is_pipe_out=True)
+        out = spi.read_single_core(dev, row_addr, col_addr, not fwd, read_shift_regs=[True, False], is_pipe_out=True)
     else:
-        out = spi.read_rows(dev, row_addr, vert=False, read_shift_regs=[True, False], is_pipe_out=True)[:, :len(bias[0])*256]
+        out = spi.read_rows(dev, row_addr, vert=not fwd, read_shift_regs=[True, False], is_pipe_out=True, col_addr=col_addr)
     return _translate_outputs(out*2+1, y_addr)
 
 
-def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None):
+def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True):
     send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_01, col_addr=col_addr, trigger=False)
     _setup_inference(dev, fwd, num_pulses, run_all=False, num_bits=1)
     _matmul_unsigned_helper_hw(dev, readout=True)
@@ -268,9 +283,9 @@ def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=
     
     # Read register
     if type(x) is np.ndarray and len(x.shape) == 1:
-        out = spi.read_single_core(dev, row_addr, col_addr, False, read_shift_regs=[True, False], is_pipe_out=True)
+        out = spi.read_single_core(dev, row_addr, col_addr, not fwd, read_shift_regs=[True, False], is_pipe_out=True, prep=prep)
     else:
-        out = spi.read_rows(dev, row_addr, vert=False, read_shift_regs=[True, False], is_pipe_out=True)[:, :len(bias[0])*256]
+        out = spi.read_rows(dev, row_addr, vert=not fwd, read_shift_regs=[True, False], is_pipe_out=True, col_addr=col_addr, prep=prep)
     return _translate_outputs(out+1, y_addr)
 
 
