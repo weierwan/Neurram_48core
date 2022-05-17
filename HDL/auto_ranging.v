@@ -21,6 +21,7 @@ module auto_ranging (
 	output reg [17:0] dout2,
 	// output reg error_polarity,
 	output reg valid,
+	output reg [7:0] iter_count,
 
 	// resistance_read (master) interface
 	output reg rr_trigger,
@@ -36,6 +37,7 @@ module auto_ranging (
 reg [2:0] state, next_state;
 reg [15:0] next_t_shld, next_t_delta;
 reg [17:0] next_dout1, next_dout2;
+reg [7:0] next_iter_count;
 
 
 parameter [2:0] STATE_IDLE = 3'd0;
@@ -52,12 +54,14 @@ always @(posedge clk, posedge rst) begin
 		t_delta <= 0;
 		dout1 <= 0;
 		dout2 <= 0;
+		iter_count <= 0;
 	end else begin
 		state <= next_state;
 		t_shld <= next_t_shld;
 		t_delta <= next_t_delta;
 		dout1 <= next_dout1;
 		dout2 <= next_dout2;
+		iter_count <= next_iter_count;
 	end
 end
 
@@ -70,6 +74,7 @@ always @(*) begin
 			next_t_delta = t_delta_init;
 			next_dout1 = 0;
 			next_dout2 = 0;
+			next_iter_count = 0;
 			// error_polarity = 0;
 			valid = 0;
 
@@ -86,6 +91,7 @@ always @(*) begin
 			next_t_delta = t_delta;
 			next_dout1 = 0;
 			next_dout2 = 0;
+			next_iter_count = iter_count;
 			// error_polarity = 0;
 			valid = 0;
 
@@ -98,6 +104,7 @@ always @(*) begin
 			next_t_delta = t_delta;
 			next_dout1 = 0;
 			next_dout2 = 0;
+			next_iter_count = iter_count;
 			// error_polarity = 0;
 			valid = 0;
 
@@ -116,6 +123,7 @@ always @(*) begin
 			next_t_delta = t_delta;
 			next_dout1 = dout1;
 			next_dout2 = dout2;
+			next_iter_count = iter_count + 1;
 			// error_polarity = 0;
 			valid = 0;
 
@@ -156,6 +164,7 @@ always @(*) begin
 			next_t_delta = t_delta;
 			next_dout1 = dout1;
 			next_dout2 = dout2;
+			next_iter_count = iter_count;
 			valid = 1;
 
 			if (ack) next_state = STATE_IDLE;
@@ -168,6 +177,7 @@ always @(*) begin
 			next_t_delta = t_delta_init;
 			next_dout1 = 0;
 			next_dout2 = 0;
+			next_iter_count = 0;
 			// error_polarity = 0;
 			valid = 0;
 			next_state = STATE_IDLE;

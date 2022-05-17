@@ -1,8 +1,4 @@
 # Directories to ignore
 results/
-HDL_v1/
-python_v1/
-lstm/
-rbm/
-python/cifar10_resnet/
+
 ~$*

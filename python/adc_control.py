@@ -58,23 +58,27 @@ def read_current_trigger(dev, t_delta, vref=0.9, verbose=False):
 def read_current_setup(dev, t_shld, t_delta, vref=0.9):
     t_setting = ((int(t_delta) & 0xffff) << 16) | (int(t_shld) & 0xffff)
     dev.SetWireInValue(0x02, t_setting)
-    dev.SetWireInValue(0x12, adc_reading_encode(vref, ADC_RRAM_VREF) | 0b1 << 18)
-    dev.UpdateWireIns()
-
-
-def read_current_auto_range(dev, t_shld, t_delta, vref=0.9, output_t=False, verbose=False):
-    t_setting = ((int(t_delta) & 0xffff) << 16) | (int(t_shld) & 0xffff)
-    dev.SetWireInValue(0x02, t_setting)
     dev.SetWireInValue(0x12, adc_reading_encode(vref, ADC_RRAM_VREF) | 0b0 << 18)
     dev.UpdateWireIns()
 
+
+def read_current_auto_range(dev, t_shld, t_delta, vref=0.9,
+                            output_t=False, setup=True, verbose=False):
+    if setup:
+        t_setting = ((int(t_delta) & 0xffff) << 16) | (int(t_shld) & 0xffff)
+        dev.SetWireInValue(0x02, t_setting)
+        dev.SetWireInValue(0x12, adc_reading_encode(vref, ADC_RRAM_VREF) | 0b0 << 18)
+        dev.UpdateWireIns()
+
+    if output_t:
+        time_measure = time.time()
     dev.ActivateTriggerIn(ADDR_RRAM_TRIGGER, 2)
     while True:
         dev.UpdateWireOuts()
         status = dev.GetWireOutValue(0x20)
         if status & 0b100 != 0:
-            d_start = dev.GetWireOutValue(0x29)
-            d_end = dev.GetWireOutValue(0x2a)
+            d_start = dev.GetWireOutValue(0x29) & 0x3ffff
+            d_end = dev.GetWireOutValue(0x2a) & 0x3ffff
             timing = dev.GetWireOutValue(0x2b)
             dev.ActivateTriggerIn(ADDR_RRAM_TRIGGER, 3) # ack
             break
@@ -91,18 +95,20 @@ def read_current_auto_range(dev, t_shld, t_delta, vref=0.9, output_t=False, verb
         print(d_end)
         print(t_delta)
     if output_t:
-        return (current, t_shld, t_delta)
+        return (current, t_shld, t_delta, time_measure)
     return current
 
 
-
 def adc_setup(dev, vread=1.0, vref=0.9, vread_wl=3.3):
-    dac.ramp_up_voltage(dev, 1, 6, vread)
-    dac.ramp_up_voltage(dev, 1, 7, vref)
+    # dac.ramp_up_voltage(dev, 1, 6, vread)
+    # dac.ramp_up_voltage(dev, 1, 7, vref)
+    dac.dac_program_single_daisy(dev, 1, 6, vread)
+    dac.dac_program_single_daisy(dev, 1, 7, vref)
 
     
 def read_average_resistance(dev, vread, vref, t_shld, t_delta, read_cycles, ignore_cycles, adc_idx=0, dac_setup=False, current=False,
-                           verbose=False, output_raw=False, vread_wl=3.3):
+                            verbose=False, output_raw=False, vread_wl=3.3, timeout=None):
+
     if dac_setup:
         adc_setup(dev, vread, vref, vread_wl)
     
@@ -110,15 +116,21 @@ def read_average_resistance(dev, vread, vref, t_shld, t_delta, read_cycles, igno
     dev.UpdateWireIns()
     
     currents = np.zeros(read_cycles)
+    time_measure = np.zeros(read_cycles)
+
+    if timeout:
+        start = time.time()
     for i in range(read_cycles):
-        currents[i], t_shld, t_delta = read_current_auto_range(dev, t_shld, t_delta, vref=vref,
-                                                    output_t=True, verbose=verbose)
+        currents[i], t_shld, t_delta, time_measure[i] = read_current_auto_range(dev, t_shld, t_delta, vref=vref,
+                                                        output_t=True, verbose=verbose)
+        if timeout and time.time() - start > timeout:
+            break
     
     dev.SetWireInValue(0x0B, 0b00)
     dev.UpdateWireIns()
     
     if output_raw:
-        return (vread-vref) / currents[:]
+        return ((vread-vref) / currents[:], time_measure)
     currents_avg = np.mean(currents[ignore_cycles:])
     if currents_avg == 0:
         print('Two voltage readings are identical')

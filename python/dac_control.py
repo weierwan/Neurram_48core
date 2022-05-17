@@ -78,6 +78,29 @@ def dac_program_single_daisy(dev, dac_idx, chnl_idx, voltage, vrefs=DAC_VREFS, v
         print('Updated DAC %d channel %d voltage to %fV.' % (dac_idx, chnl_idx, voltage))
 
 
+def dac_program_two(dev, dac_idx_0, chnl_idx_0, voltage_0, dac_idx_1, chnl_idx_1, voltage_1, vrefs=DAC_VREFS):
+    assert dac_idx_0 != dac_idx_1
+    for i in range(DAC_NUM-1, -1, -1):
+        if i == dac_idx_0:
+            dac_program_single(dev, chnl_idx_0, voltage_0, vrefs[i])
+        elif i == dac_idx_1:
+            dac_program_single(dev, chnl_idx_1, voltage_1, vrefs[i])
+        else:
+            dac_program_single(dev, 0, 0, vrefs[i], no_op=True)
+        # while True:
+        #     dev.UpdateWireOuts()
+        #     status = dev.GetWireOutValue(0x20)
+        #     if status & 0b10 != 0:
+        #         break
+
+    dev.ActivateTriggerIn(0x41, 0)
+    # while True:
+    #     dev.UpdateWireOuts()
+    #     status = dev.GetWireOutValue(0x20)
+    #     if status & 0b100000 != 0:
+    #         break
+
+
 def dac_program_all(dev, voltages=DAC_VOLTAGES, vrefs=DAC_VREFS):
     for c in range(DAC_NUM_CHANNEL):
         for i in range(DAC_NUM):

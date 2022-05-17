@@ -283,8 +283,8 @@ assign adc_rram_ack = ep43wire[1] | atrg_rr_ack_trigger;
 assign ep20wire[8] = adc_rram_valid;
 assign ep21wire[18*ADC_RRAM_NUM-1:0] = adc_rram_dout1;
 assign ep22wire[18*ADC_RRAM_NUM-1:0] = adc_rram_dout2;
-assign rram_t_shld = (manual_range_mode)? t_shld_init : t_shld_atrg;
-assign rram_t_delta = (manual_range_mode)? t_delta_init : t_delta_atrg;
+assign rram_t_shld = manual_range_mode ? t_shld_init : t_shld_atrg;
+assign rram_t_delta = manual_range_mode ? t_delta_init : t_delta_atrg;
 
 resistance_read #(.num_adc(ADC_RRAM_NUM)) tia_adc(
 	.clk(adc_rram_clk),
@@ -309,6 +309,7 @@ wire [17:0] auto_range_vref;
 wire atrg_rr_trigger, atrg_rr_ack_trigger;
 wire [17:0] atrg_dout1, atrg_dout2;
 wire atrg_valid;
+wire [7:0] atrg_iter_count;
 
 assign auto_range_trigger = ep43wire[2];
 assign auto_range_ack = ep43wire[3];
@@ -318,6 +319,7 @@ assign t_shld_init = ep02wire[15:0];
 assign t_delta_init = ep02wire[31:16];
 assign ep29wire[17:0] = atrg_dout1;
 assign ep2Awire[17:0] = atrg_dout2;
+assign ep2Awire[26:18] = atrg_iter_count;
 assign ep20wire[2] = atrg_valid;
 assign ep2Bwire[15:0] = rram_t_shld;
 assign ep2Bwire[31:16] = rram_t_delta;
@@ -335,6 +337,7 @@ auto_ranging at_rg(
 	.dout1(atrg_dout1),
 	.dout2(atrg_dout2),
 	.valid(atrg_valid),
+	.iter_count(atrg_iter_count),
 	.rr_trigger(atrg_rr_trigger),
 	.ack_trigger(atrg_rr_ack_trigger),
 	.t_shld(t_shld_atrg),
@@ -605,10 +608,12 @@ wire lfsr_neuron_on, lfsr_inf_mode_off, lfsr_ext_inf_on;
 wire lfsr_mode_on;
 wire [3:0] lfsr_pulse_width;
 wire lfsr_integ_trig;
+wire [8:0] lfsr_shift_cycle;
 
 assign lfsr_shift_trigger = ep44wire[4];
 assign lfsr_pulse_trigger = ep44wire[5];
 assign lfsr_pulse_width = ep10wire[3:0];
+assign lfsr_shift_cycle = ep10wire[20:12];
 
 lfsr_control lfsr(
 	.clk(spi_ctrl_clk),
@@ -616,6 +621,7 @@ lfsr_control lfsr(
 	.rst(neurram_rst),
 	.lfsr_shift_trigger(lfsr_shift_trigger),
 	.lfsr_pulse_trigger(lfsr_pulse_trigger),
+	.shift_cycle(lfsr_shift_cycle),
 	.pipe_out(epA1pipe),
 	.out_fifo_rd_en(epA1read),
 	.out_fifo_empty(),

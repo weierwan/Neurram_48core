@@ -4,11 +4,16 @@
 import dac_control as dac
 import spi_control as spi
 
+
+VREF = 0.9
+
 def update_bias_voltages(dev, vref=None, vcomp1=None, vcomp2=None, ibias=None, vlfsr_pos=None, vlfsr_neg=None, vreset_plus=None, vreset_minus=None, vcomp_offset=0.02):
 	if vref is not None:
 		dac.dac_program_single_daisy(dev, 0, 2, vref)
 		dac.dac_program_single_daisy(dev, 1, 1, vref)
 		dac.dac_program_single_daisy(dev, 1, 4, vref)
+	else:
+		vref = VREF
 	if vcomp1 is not None:
 		dac.dac_program_single_daisy(dev, 0, 0, vcomp1 + vcomp_offset)
 	if vcomp2 is not None:
@@ -20,20 +25,24 @@ def update_bias_voltages(dev, vref=None, vcomp1=None, vcomp2=None, ibias=None, v
 	if vlfsr_neg is not None:
 		dac.dac_program_single_daisy(dev, 0, 6, vlfsr_neg)
 	if vreset_plus is not None:
-		dac.dac_program_single_daisy(dev, 0, 3, vreset_plus)
+		dac.dac_program_single_daisy(dev, 0, 4, vref + vreset_plus)
 	if vreset_minus is not None:
-		dac.dac_program_single_daisy(dev, 0, 4, vreset_minus)
+		dac.dac_program_single_daisy(dev, 2, 2, vref - vreset_minus)
 
 
-def update_pulse_voltages(dev, bias06, bias14, is_bl=True):
+def update_pulse_voltages(dev, bias06=None, bias14=None, is_bl=True):
 	if is_bl:
-		dac.dac_program_single_daisy(dev, 1, 0, bias06)
+		if bias06 is not None:
+			dac.dac_program_single_daisy(dev, 1, 0, bias06)
 		# dac.dac_program_single_daisy(dev, 1, 1, bias10)
-		dac.dac_program_single_daisy(dev, 1, 2, bias14)
+		if bias14 is not None:
+			dac.dac_program_single_daisy(dev, 1, 2, bias14)
 	else:
-		dac.dac_program_single_daisy(dev, 1, 3, bias06)
+		if bias06 is not None:
+			dac.dac_program_single_daisy(dev, 1, 3, bias06)
 		# dac.dac_program_single_daisy(dev, 1, 4, bias10)
-		dac.dac_program_single_daisy(dev, 1, 5, bias14)
+		if bias14 is not None:
+			dac.dac_program_single_daisy(dev, 1, 5, bias14)
 
 
 def setup(dev, mode, forward, run_all, partial_reset, comp_phase, ota_time, num_pulses):
@@ -56,6 +65,8 @@ def setup(dev, mode, forward, run_all, partial_reset, comp_phase, ota_time, num_
 	dev.UpdateWireIns()
 
 
+
+# Deprecated, now the registers are directly configured by the FSM
 def setup_reg(dev, forward):
 	# spi.reset(dev, horz=forward, vert=not forward)
 	if forward:

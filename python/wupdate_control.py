@@ -68,10 +68,10 @@ def wupdate_setup(dev, vset_bl, vset_wl, vreset_sl, pulse_width, vreset_wl=5.0, 
     
 def apply_set_pulse(dev, vset_bl, vset_wl, tset, prep=True):
     if prep:
-        # dac.dac_program_single_daisy(dev, 3, 0, 1.0)
-        dac.ramp_up_voltage(dev, 3, 0, vset_bl)
-        # dac.dac_program_single_daisy(dev, 3, 1, 1.0)
-        dac.ramp_up_voltage(dev, 3, 1, vset_wl)
+        dac.dac_program_single_daisy(dev, 3, 0, vset_bl)
+        dac.dac_program_single_daisy(dev, 3, 1, vset_wl)
+        # dac.ramp_up_voltage(dev, 3, 0, vset_bl)
+        # dac.ramp_up_voltage(dev, 3, 1, vset_wl)
         dev.SetWireInValue(0x07, int(tset/SYS_CLK_PERIOD) & 0xffffffff)
         dev.UpdateWireIns()
     dev.SetWireInValue(0x0B, 0b10)
@@ -89,10 +89,10 @@ def apply_set_pulse(dev, vset_bl, vset_wl, tset, prep=True):
     
 def apply_reset_pulse(dev, vreset_sl, treset, vreset_wl=5.0, prep=True):
     if prep:
-        # dac.dac_program_single_daisy(dev, 3, 2, 1.0)
-        dac.ramp_up_voltage(dev, 3, 2, vreset_sl)
-        # dac.dac_program_single_daisy(dev, 3, 3, 1.0)
-        dac.ramp_up_voltage(dev, 3, 3, vreset_wl)
+        dac.dac_program_single_daisy(dev, 3, 2, vreset_sl)
+        dac.dac_program_single_daisy(dev, 3, 3, vreset_wl)
+        # dac.ramp_up_voltage(dev, 3, 2, vreset_sl)
+        # dac.ramp_up_voltage(dev, 3, 3, vreset_wl)
         dev.SetWireInValue(0x07, int(treset/SYS_CLK_PERIOD) & 0xffffffff)
         dev.UpdateWireIns()
     dev.SetWireInValue(0x0B, 0b01)
@@ -195,9 +195,10 @@ def program_increment(dev, row, col, core_row, core_col,
                       r_low, r_high,
                       vset_start, vset_end, vset_wl, vreset_start, vreset_end, vreset_wl=5.0,
                       pulse_width=1e-7, iteration_limit=10, max_pulse_limit=10, vread=1.0, vref=0.9, t_delta=20,
-                      read_cycles=8, ignore_cycles=3,
+                      read_cycles=8, ignore_cycles=3, timeout = 10,
                       incremental=True, adc_setup=False, verbose=1, record_history=False, final_pulse=None):
 
+    start = time.time()
     write_reg(dev, int(row), int(col), int(core_row), int(core_col))
     readings = []
     pulses = []
@@ -257,7 +258,7 @@ def program_increment(dev, row, col, core_row, core_col,
                     if verbose > 0:
                         print('RRAM is programmed within the range.')
                     return (True, read, pulse_count, pulses, readings)
-        if iter_count > iteration_limit or max_pulse_count_reset >= max_pulse_limit or max_pulse_count_set >= max_pulse_limit:
+        if iter_count > iteration_limit or max_pulse_count_reset >= max_pulse_limit or max_pulse_count_set >= max_pulse_limit or time.time()-start > timeout:
             if verbose > 0:
                 print('Programming exceeds maximum iteration.')
             return (False, read, pulse_count, pulses, readings)

@@ -284,6 +284,13 @@ def enable_single_col(dev, addr_vert, first_half=True, second_half=True):
         disable_core(dev, 0b100, addr_vert, dec_enable=0b10)
 
 
+def enable_all_cores(dev):
+    enable_core(dev, 0b000, 0b000, dec_enable=0b00)
+    enable_core(dev, 0b100, 0b000, dec_enable=0b00)
+    enable_core(dev, 0b000, 0b100, dec_enable=0b00)
+    enable_core(dev, 0b100, 0b100, dec_enable=0b00)
+
+
 def enable_2_cores_vert(dev, addr_horz, addr_vert):
     reset_core_enable_reg(dev)
     enable_core(dev, swap_addr(addr_horz), swap_addr(addr_vert))

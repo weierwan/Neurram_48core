@@ -7,7 +7,7 @@
 //
 //------------------------------------------------------------------------
 
-module lfsr_control #(parameter shift_cycle = 320)
+module lfsr_control
 	(
 	input wire clk,
 	input wire ok_clk,
@@ -15,6 +15,7 @@ module lfsr_control #(parameter shift_cycle = 320)
 
 	input wire lfsr_shift_trigger,
 	input wire lfsr_pulse_trigger,
+	input wire [8:0] shift_cycle,
 
 	output wire [31:0] pipe_out,
 	input wire out_fifo_rd_en,
@@ -64,7 +65,7 @@ FIFO32x32 FIFO_pipe_out(
 reg [4:0] state, next_state;
 reg [8:0] clk_counter;
 reg [4:0] pip_counter;
-reg [shift_cycle-1:0] shift_lfsr2pip[1:0];
+reg [255:0] shift_lfsr2pip[1:0];
 
 parameter [4:0] STATE_IDLE = 5'd0;
 parameter [4:0]	STATE_SHIFT = 5'd1;
@@ -123,10 +124,10 @@ always @(posedge clk, posedge rst) begin
 				out_fifo_din <= 0;
 				clk_counter <= clk_counter;
 				pip_counter <= 0;
-				shift_lfsr2pip[0][shift_cycle-1] <= lfsr_in[0];
-				shift_lfsr2pip[0][shift_cycle-2:0] <= shift_lfsr2pip[0][shift_cycle-1:1];
-				shift_lfsr2pip[1][shift_cycle-1] <= lfsr_in[1];
-				shift_lfsr2pip[1][shift_cycle-2:0] <= shift_lfsr2pip[1][shift_cycle-1:1];
+				shift_lfsr2pip[0][255] <= lfsr_in[0];
+				shift_lfsr2pip[0][254:0] <= shift_lfsr2pip[0][255:1];
+				shift_lfsr2pip[1][255] <= lfsr_in[1];
+				shift_lfsr2pip[1][254:0] <= shift_lfsr2pip[1][255:1];
 				lfsr_pulse <= 0;
 				lfsr_neuron_on <= 0;
 				inf_mode_off <= 0;
@@ -162,10 +163,10 @@ always @(posedge clk, posedge rst) begin
 				ext_inf <= 0;
 				lfsr_mode <= 0;
 				integ_trig <= 0;
-				if (pip_counter < shift_cycle / 32) begin
+				if (pip_counter < 8) begin
 					out_fifo_din <= shift_lfsr2pip[0][32*pip_counter +: 32];
 				end else begin
-					out_fifo_din <= shift_lfsr2pip[1][32*(pip_counter-(shift_cycle/32)) +: 32];
+					out_fifo_din <= shift_lfsr2pip[1][32*(pip_counter-8) +: 32];
 				end
 			end
 			STATE_PREP1: begin
@@ -371,7 +372,7 @@ always @(*) begin
 			else next_state = STATE_SHIFT;
 		end
 		STATE_PIPE_OUT: begin
-			if (pip_counter == shift_cycle / 16 - 1) next_state = STATE_IDLE;
+			if (pip_counter == 15) next_state = STATE_IDLE;
 			else next_state = STATE_PIPE_OUT;
 		end
 		STATE_PREP1: begin

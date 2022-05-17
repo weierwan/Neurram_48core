@@ -38,7 +38,7 @@ def dac_setup(dev, vpos_bl=None, vneg_bl=None, vpos_sl=None, vneg_sl=None, vrese
         # dac.ramp_up_voltage(dev, 1, 5, VREF + vpos_sl)
 
 
-def _populate_nparray(x, x_addr, bias, fwd, reverse=False):
+def _populate_nparray(x, x_addr, bias, fwd, reverse=False, diff=True):
     transform = len(x.shape) == 1
     if transform:
         x = x.reshape([1, -1])
@@ -46,42 +46,52 @@ def _populate_nparray(x, x_addr, bias, fwd, reverse=False):
     if bias:
         if type(bias) is bool:
             bias = 1
-        assert (2*(L + bias) == len(x_addr))
+        if diff:
+            assert (2*(L + bias) == len(x_addr))
+        else:
+            assert (L + bias == len(x_addr))
     else:
-        assert (2*L == len(x_addr))
+        if diff:
+            assert (2*L == len(x_addr))
+        else:
+            assert (L == len(x_addr))
         
     x_reg = np.zeros([N, 256])
-    x_reg[:, x_addr[0:2*L:2]] = x
-    x_reg[:, x_addr[1:2*L:2]] = -x
-    if bias:
-        x_reg[:, x_addr[2*L : 2*(L+bias)]] = np.tile([1, -1], bias)
-    if not fwd:
-        if reverse:
-            padding = [-1, 1]
-        else:
-            padding = [1, -1]
-        padding_idx = np.delete(np.arange(256), x_addr)
+        
+    if diff:
+        x_reg[:, x_addr[0:2*L:2]] = x
+        x_reg[:, x_addr[1:2*L:2]] = -x
         if bias:
-            x_reg[:, padding_idx] = np.tile(padding, 128-L-bias)
+            x_reg[:, x_addr[2*L : 2*(L+bias)]] = np.tile([1, -1], bias)
+    else:
+        x_reg[:, x_addr[0:L]] = x
+        if bias:
+            x_reg[:, x_addr[L:L+bias]] = 1
+    if not fwd:
+        padding_idx = np.delete(np.arange(256), x_addr)
+        if reverse:
+            x_reg[:, padding_idx[0::2]] = -1
+            x_reg[:, padding_idx[1::2]] = 1
         else:
-            x_reg[:, padding_idx] = np.tile(padding, 128-L)
+            x_reg[:, padding_idx[0::2]] = 1
+            x_reg[:, padding_idx[1::2]] = -1
     if transform:
         x_reg = x_reg.reshape([-1,])
     return x_reg
 
 
-def _encode_input(x, x_addr, bias, fwd, reverse=False):
+def _encode_input(x, x_addr, bias, fwd, reverse=False, diff=True):
     if type(x) is np.ndarray:
-        return _populate_nparray(x, x_addr, bias, fwd, reverse=reverse)
+        return _populate_nparray(x, x_addr, bias, fwd, reverse=reverse, diff=diff)
     assert len(x) == len(x_addr)
     assert len(x) == len(bias)
     x_reg = []
     for x_i, addr_i, bias_i in zip(x, x_addr, bias):
-        x_reg.append(_populate_nparray(x_i, addr_i, bias_i, fwd, reverse=reverse))
+        x_reg.append(_populate_nparray(x_i, addr_i, bias_i, fwd, reverse=reverse, diff=diff))
     return np.hstack(x_reg)
 
 
-def _encode_input_01(x, x_addr, bias, fwd, neg=False):
+def _encode_input_01(x, x_addr, bias, fwd, neg=False, diff=True):
     if type(x) is np.ndarray:
         x_bipolar = x*2-1
         ones_bipolar = np.ones_like(x)
@@ -94,20 +104,20 @@ def _encode_input_01(x, x_addr, bias, fwd, neg=False):
         if neg:
             x_bipolar = [-i for i in x_bipolar]
             ones_bipolar = [-i for i in ones_bipolar]
-    return np.hstack([_encode_input(x_bipolar, x_addr, bias, fwd), _encode_input(ones_bipolar, x_addr, bias, fwd, reverse=True)])
+    return np.hstack([_encode_input(x_bipolar, x_addr, bias, fwd, diff=diff), _encode_input(ones_bipolar, x_addr, bias, fwd, reverse=True, diff=diff)])
 
 
-def _encode_input_101(x, x_addr, bias, fwd):
+def _encode_input_101(x, x_addr, bias, fwd, diff=True):
     if type(x) is np.ndarray:
         x_1 = (x>0) * 2 - 1
         x_2 = (x>=0) * 2 - 1
     else:
         x_1 = [(i>0)*2-1 for i in x]
         x_2 = [(i>=0)*2-1 for i in x]
-    return np.hstack([_encode_input(x_1, x_addr, bias, fwd), _encode_input(x_2, x_addr, bias, fwd)])
+    return np.hstack([_encode_input(x_1, x_addr, bias, fwd, diff=diff), _encode_input(x_2, x_addr, bias, fwd, diff=diff)])
 
 
-def _encode_input_unsigned(x, x_addr, bias, fwd, input_num_bits):
+def _encode_input_unsigned(x, x_addr, bias, fwd, input_num_bits, diff=True):
     if type(x) is np.ndarray:
         assert (x < 2**input_num_bits).all(), 'x value must be less than 2**input_num_bits'
     x_binary_list = []
@@ -116,11 +126,11 @@ def _encode_input_unsigned(x, x_addr, bias, fwd, input_num_bits):
             x_binary = (x.astype(np.int8) & (0b1 << b)) >> b
         else:
             x_binary = [(x_i.astype(np.int8) & (0b1 << b)) >> b for x_i in x]
-        x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd))
+        x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd, diff=diff))
     return np.hstack(x_binary_list)
 
 
-def _encode_input_2complement(x, x_addr, bias, fwd, input_num_bits):
+def _encode_input_2complement(x, x_addr, bias, fwd, input_num_bits, diff=True):
     if type(x) is np.ndarray:
         assert (x < 2**(input_num_bits-1)).all(), 'x value must be less than 2**(input_num_bits-1)'
         assert (x >= -2**(input_num_bits-1)).all(), 'x value must be greater than or equal to -2**(input_num_bits-1)'
@@ -130,17 +140,17 @@ def _encode_input_2complement(x, x_addr, bias, fwd, input_num_bits):
             x_binary = (x.astype(np.int8) & (0b1 << b)) >> b
         else:
             x_binary = [(x_i.astype(np.int8) & (0b1 << b)) >> b for x_i in x]
-        x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd))
+        x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd, diff=diff))
     # Process the sign bit (2's complement)
     if type(x) is np.ndarray:
         x_binary = (x < 0).astype(np.int8)
     else:
         x_binary = [(x < 0).astype(np.int8) for x_i in x]
-    x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd, neg=True))
+    x_binary_list.append(_encode_input_01(x_binary, x_addr, bias, fwd, neg=True, diff=diff))
     return np.hstack(x_binary_list)
 
 
-def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits):
+def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits, diff=True):
     if type(x) is np.ndarray:
         assert (x < 2**(input_num_bits-1)).all(), 'x value must be less than 2**(input_num_bits-1)'
         assert (x > -2**(input_num_bits-1)).all(), 'x value must be greater than -2**(input_num_bits-1)'
@@ -150,7 +160,7 @@ def _encode_input_signed(x, x_addr, bias, fwd, input_num_bits):
             x_binary = (np.abs(x).astype(np.int8) >> b & 0b1) * np.sign(x)
         else:
             x_binary = [(np.abs(x_i).astype(np.int8) >> b & 0b1) * np.sign(x_i) for x_i in x]
-        x_binary_list.append(_encode_input_101(x_binary, x_addr, bias, fwd))
+        x_binary_list.append(_encode_input_101(x_binary, x_addr, bias, fwd, diff=diff))
     return np.hstack(x_binary_list)
 
 
@@ -193,7 +203,7 @@ def _translate_outputs(outputs, y_addr, batch_size=None):
     return out_list
 
 
-def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_addr=None, ota_time=3, sample_time=2, num_bits=None, reset_reg=True, iteration=1, max_steps=128,
+def _setup_inference(dev, fwd, num_pulses, run_all, partial_reset=False, col_addr=None, ota_time=63, sample_time=2, num_bits=None, reset_reg=True, iteration=1, max_steps=128,
                      cds_time=3, comp_time=2, reset_time=0):
     dev.SetWireInValue(0x06, 0b01100000) # Enable neuron OTA and reg_controlled_wl
     dev.SetWireInValue(0x09, run_all | partial_reset << 1 | 0b11 << 2 | (ota_time & 0xff) << 4 | 0b01 << 12 | (num_pulses << 14) | 0b01 << 23 | cds_time << 25)
@@ -220,6 +230,12 @@ def _setup_partial_reset_hw(dev, col_addr=None, fwd=True, max_steps=128):
             shift_multiplier = 2 * (col_addr + 1)
         single_core = True
     dev.SetWireInValue(0x0F, (num_core & 0b111) | (shift_multiplier & 0xf) << 3 | single_core << 7 | max_steps << 8 | 0b0 << 16)
+
+
+def _setup_sar_hw(dev, num_bits, vreset, t_dac_settle=125, vref=0.9, external_dac=False):
+    dev.SetWireInValue(0x16, (num_bits & 0b111) | t_dac_settle << 3 | external_dac << 20);
+    dev.SetWireInValue(0x17, (int(vreset / 2.048 * 2**16) & 0xffff) | (int(vref / 2.048 * 2**16) & 0xffff) << 16);
+    dev.UpdateWireIns()
 
 
 def _trigger_neuron(dev, trigger):
@@ -260,8 +276,8 @@ def _matmul_unsigned_helper_hw(dev, readout=True):
         _trigger_neuron(dev, 2)
                
     
-def matmul_bipolar(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None):
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input, col_addr=col_addr)
+def matmul_bipolar(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, diff=True):
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input, col_addr=col_addr, diff=diff)
     _setup_inference(dev, fwd, num_pulses, run_all=True)
 
     _trigger_neuron(dev, 0)
@@ -275,8 +291,8 @@ def matmul_bipolar(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_
     return _translate_outputs(out*2+1, y_addr)
 
 
-def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True):
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_01, col_addr=col_addr, trigger=False)
+def matmul_01(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True, diff=True):
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_01, col_addr=col_addr, trigger=False, diff=diff)
     _setup_inference(dev, fwd, num_pulses, run_all=False, num_bits=1)
     _matmul_unsigned_helper_hw(dev, readout=True)
     # disable_inference(dev)
@@ -309,7 +325,7 @@ def _write_y_addr(dev, y_addr, row_addr=None, col_addr=None):
     while True:
         dev.UpdateWireOuts()
         status = dev.GetWireOutValue(0x28)
-        if (status & 0b1000 != 0) and (status & (0b1 << 7) != 0):
+        if (status & 0b1000 != 0): #and (status & (0b1 << 7) != 0):
             break
         
 
@@ -379,8 +395,8 @@ def _matmul_dac2adc_helper(dev):
             break
 
 
-def matmul_bipolar_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True):
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input, col_addr=col_addr, prep=prep)
+def matmul_bipolar_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True, diff=True):
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input, col_addr=col_addr, prep=prep, diff=diff)
     if prep:
         _setup_inference(dev, fwd, num_pulses, run_all=False, partial_reset=True, col_addr=col_addr)
     
@@ -392,13 +408,13 @@ def matmul_bipolar_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, nu
     return output
 
 
-def matmul_01_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True):
+def matmul_01_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pulses, col_addr=None, prep=True, diff=True):
     iteration = 1
     batch_size = None
     if type(x) is np.ndarray and len(x.shape) == 2:
         iteration = x.shape[0]
         batch_size = x.shape[0]
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_01, col_addr=col_addr, trigger=False, prep=prep)
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, _encode_input_01, col_addr=col_addr, trigger=False, prep=prep, diff=diff)
     if prep:
         _setup_inference(dev, fwd, num_pulses, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=1, iteration=iteration)
         _write_y_addr(dev, y_addr, row_addr=row_addr, col_addr=col_addr)
@@ -406,7 +422,7 @@ def matmul_01_partial_reset(dev, x, x_addr, y_addr, bias, row_addr, fwd, num_pul
     return _read_num_step(dev, y_addr, row_addr=row_addr, col_addr=col_addr, batch_size=batch_size)
 
 
-def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, col_addr, pulse_multiplier=1, prep=True):
+def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, col_addr, pulse_multiplier=1, prep=True, diff=True):
     iteration = 1
     batch_size = None
     if type(x) is np.ndarray:
@@ -421,7 +437,7 @@ def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, 
         encode_func = _encode_input_signed
     else:
         encode_func = _encode_input_unsigned
-    send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=col_addr, trigger=False, prep=prep, input_num_bits=input_num_bits)
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=col_addr, trigger=False, prep=prep, input_num_bits=input_num_bits, diff=diff)
     if prep:
         _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits-1 if signed else input_num_bits, iteration=iteration)
         _write_y_addr(dev, y_addr, row_addr=row_addr, col_addr=col_addr)
@@ -429,8 +445,8 @@ def matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, 
     return _read_num_step(dev, y_addr, row_addr=row_addr, col_addr=col_addr, batch_size=batch_size)
 
 
-def matmul_unsigned(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, col_addr, pulse_multiplier=1, prep=True):
-    return matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, False, col_addr, pulse_multiplier, prep)
+def matmul_unsigned(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, col_addr, pulse_multiplier=1, prep=True, diff=True):
+    return matmul(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, False, col_addr, pulse_multiplier, prep, diff=diff)
 
 
 def calibrate_voltage(dev, vpos, vneg, rows, cols, core_row, core_col, fwd, num_pulse, tolerance=0.05, increment=0.001, iteration=1000, max_cycle=10, vcomp_offset=0.02, verbose=False):
@@ -459,3 +475,68 @@ def calibrate_voltage(dev, vpos, vneg, rows, cols, core_row, core_col, fwd, num_
             print('calibrate vpos=%.4f, vneg=%.4f, percentage(output=1)=%.3f' % (vpos, vneg, one_pct))
             return (vpos, vneg)
         cycle += 1
+
+
+def _update_vreset(dev, vreset_plus, vreset_minus):
+    dac.dac_program_two(dev, 0, 4, VREF + vreset_plus, 2, 2, VREF - vreset_minus)
+
+
+def _neuron_sar(dev, num_bits, vreset_plus, vreset_minus, row_addr, col_addr, vert):
+    _update_vreset(dev, vreset_plus, vreset_minus)
+    _trigger_neuron(dev, 2)
+    readings = np.zeros(256, dtype=np.int16)
+    sign_bit = 2 * spi.read_single_core(dev, row_addr=row_addr, col_addr=col_addr, vert=vert, is_pipe_out=True, read_shift_regs=[True, False]).astype(np.int16) + 1
+    for b in range(num_bits-1):
+        vreset_plus = vreset_plus / 2
+        vreset_minus = vreset_minus / 2
+        _update_vreset(dev, vreset_plus, vreset_minus)
+        _trigger_neuron(dev, 2)
+        out = spi.read_single_core(dev, row_addr=row_addr, col_addr=col_addr, vert=vert, is_pipe_out=True, read_shift_regs=[True, False], prep=(b==0)).astype(np.int16)
+        out = out * sign_bit + (sign_bit + 1) // 2
+        readings = np.bitwise_or(readings, out << (num_bits - b - 2))
+    return readings * sign_bit
+
+
+def matmul_sar(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, output_num_bits,
+               col_addr, vreset_plus, vreset_minus, pulse_multiplier=1, prep=True, diff=True):
+    if signed:
+        encode_func = _encode_input_signed
+    else:
+        encode_func = _encode_input_unsigned
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=col_addr, trigger=False, prep=True, input_num_bits=input_num_bits, diff=diff)
+    if prep:
+        _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits-1 if signed else input_num_bits)
+    _matmul_unsigned_helper_hw(dev, readout=False)
+    out = _neuron_sar(dev, output_num_bits, vreset_plus, vreset_minus, row_addr, col_addr, not fwd)
+    return _translate_outputs(out, y_addr)
+
+
+def matmul_sar_hw(dev, x, x_addr, y_addr, bias, row_addr, fwd, input_num_bits, signed, output_num_bits,
+                  col_addr, vreset, pulse_multiplier=1, prep=True, diff=True, t_dac_settle=125):
+    if signed:
+        encode_func = _encode_input_signed
+    else:
+        encode_func = _encode_input_unsigned
+    send_inputs(dev, x, x_addr, bias, row_addr, fwd, encode_func, col_addr=col_addr, trigger=False, prep=True, input_num_bits=input_num_bits, diff=diff)
+    if prep:
+        _setup_inference(dev, fwd, pulse_multiplier, run_all=False, partial_reset=True, col_addr=col_addr, num_bits=input_num_bits-1 if signed else input_num_bits)
+        _setup_sar_hw(dev, num_bits=output_num_bits, vreset=vreset, t_dac_settle=t_dac_settle)
+    _matmul_unsigned_helper_hw(dev, readout=False)
+    outputs = _neuron_sar_helper(dev)
+    return _translate_outputs(outputs, y_addr)
+    
+
+def _neuron_sar_helper(dev):
+    dev.ActivateTriggerIn(0x45, 9)
+    while True:
+        dev.UpdateWireOuts()
+        status = dev.GetWireOutValue(0x28)
+        if status & (0b1 << 14) != 0:
+            break
+    datain = bytearray(256)
+    data = dev.ReadFromPipeOut(0xA3, datain)
+    np_bytes = np.frombuffer(datain, dtype=np.uint8)
+    sign = (np_bytes >> 7) * 2 - 1
+    magnitude = np_bytes & 0x7f
+    return (sign * magnitude)
+    

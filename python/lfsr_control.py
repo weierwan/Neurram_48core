@@ -9,7 +9,11 @@ def set_reg(dev):
     dev.SetWireInValue(0x0A, 0b0)
     dev.UpdateWireIns()
     
-def shift_reg(dev):
+def setup_lfsr(dev, cycle, pulse_width):
+    dev.SetWireInValue(0x10, (cycle & 0x1ff) << 12 | (pulse_width & 0xf))
+    dev.UpdateWireIns()
+
+def shift_reg(dev, cycle=None):        
     datain = bytearray(64)
     dev.ActivateTriggerIn(0x44, 4)
     data = dev.ReadFromPipeOut(0xA1, datain)
